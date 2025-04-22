@@ -7,6 +7,7 @@ import requests
 import json
 import os
 import re
+import time
 
 class IntentAnalyzer:
     """Класс для анализа намерений пользователя с использованием моделей GPT"""
@@ -113,19 +114,28 @@ class IntentAnalyzer:
         """
         
         # Формируем сообщения для API
+        truncated_message = user_message
+        if len(truncated_message) > 1000:
+            truncated_message = truncated_message[:1000] + "..."
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Анализируй это сообщение пользователя Астре (ТОЧНО, БЕЗ ИНТЕРПРЕТАЦИЙ): '{user_message}'"}
+            {"role": "user", "content": f"Анализируй только это: {truncated_message}"}
         ]
+
+
         
         # Добавляем контекст диалога, если он передан
         if conversation_context:
             context_message = "Контекст диалога:\n\n"
             # Ограничиваем количество сообщений контекста для экономии токенов
-            for idx, message in enumerate(conversation_context[-3:]):  # Последние 3 сообщения
+            for idx, message in enumerate(conversation_context[-4:]):  # Последние 4 сообщения
                 role = "Пользователь" if message.get("role") == "user" else "Астра"
                 context_message += f"{role}: {message.get('content')}\n\n"
             
+            if len(context_message) > 2000:
+                context_message = context_message[:2000] + "..."
+
             messages.insert(1, {"role": "user", "content": context_message})
         
         # Формируем заголовки запроса
@@ -148,6 +158,7 @@ class IntentAnalyzer:
         try:
             # Отправляем запрос к API
             response = requests.post(self.api_url, headers=headers, json=data)
+            time.sleep(0.6)
             
             # Проверяем наличие ошибок
             if response.status_code != 200:
@@ -245,6 +256,7 @@ class IntentAnalyzer:
         try:
             # Отправляем запрос к API
             response = requests.post(self.api_url, headers=headers, json=data)
+            time.sleep(0.6)
             
             # Проверяем наличие ошибок
             if response.status_code != 200:
@@ -380,6 +392,7 @@ class IntentAnalyzer:
         try:
             # Отправляем запрос к API
             response = requests.post(self.api_url, headers=headers, json=data)
+            time.sleep(0.6)
             
             # Проверяем наличие ошибок
             if response.status_code != 200:

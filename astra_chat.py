@@ -159,6 +159,10 @@ class AstraChat:
         
         # Добавляем предлагаемый ответ в контекст
         emotional_context += f"\n💬 ПРЕДЛАГАЕМЫЙ МНОГОСЛОЙНЫЙ ОТВЕТ (используй его как основу, но можешь модифицировать):\n\n{layered_reply}\n\n"
+
+        if len(layered_reply) > 2000:
+            layered_reply = layered_reply[:2000] + "..."
+
         
         # Добавляем примеры тона, если они есть
         if state.get('tone'):
@@ -169,6 +173,7 @@ class AstraChat:
                 if examples:
                     # Выбираем до 3 случайных примеров
                     sample_size = min(3, len(examples))
+                    examples = examples[:10]  # максимум 10 примеров
                     random_examples = random.sample(examples, sample_size)
                     emotional_context += f"\nПримеры для tone '{tone}':\n"
                     for example in random_examples:
@@ -181,6 +186,7 @@ class AstraChat:
             if examples and len(examples) > 0:
                 # Выбираем до 3 случайных примеров
                 sample_size = min(3, len(examples))
+                examples = examples[:10]  # максимум 10 примеров
                 random_examples = random.sample(examples, sample_size)
                 emotional_context += f"\nПримеры для flavor '{flavor}':\n"
                 for example in random_examples:
@@ -206,6 +212,7 @@ class AstraChat:
         ]
         
         # Добавляем релевантный контекст к сообщениям
+        print("💬 relevant_context tokens:", len(str(relevant_context)))
         messages.extend(relevant_context)
         
         # Обязательно добавляем текущее сообщение пользователя в конец
