@@ -1,0 +1,13 @@
+{
+  "identity": {
+    "user_name": "",
+    "relationship_status": "",
+    "relationship_history": []
+  },
+  "preferences": {
+    "likes": [],
+    "dislikes": [],
+    "important_dates": []
+  },
+  "shared_experiences": []
+}
