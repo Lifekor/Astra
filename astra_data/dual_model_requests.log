@@ -867,3 +867,77 @@
   "style_mirroring": true
 }
 --------------------------------------------------------------------------------
+[2025-04-22 08:59:25] 1. Intent Analysis
+{
+  "intent": "error",
+  "confidence": 0,
+  "error": "{\n    \"error\": {\n        \"message\": \"Incorrect API key provided: sk-proj-********************************************************************************************************************************************************QowA. You can find your API key at https://platform.openai.com/account/api-keys.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"invalid_api_key\"\n    }\n}\n"
+}
+--------------------------------------------------------------------------------
+[2025-04-22 08:59:26] 2. Style Analysis
+{
+  "error": "{\n    \"error\": {\n        \"message\": \"Incorrect API key provided: sk-proj-********************************************************************************************************************************************************QowA. You can find your API key at https://platform.openai.com/account/api-keys.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"invalid_api_key\"\n    }\n}\n"
+}
+--------------------------------------------------------------------------------
+[2025-04-22 08:59:27] 3. Memory Extraction
+{
+  "intent": "error",
+  "memories": [],
+  "sources": {}
+}
+--------------------------------------------------------------------------------
+[2025-04-22 08:59:27] 6. Final Result
+{
+  "response": "Произошла ошибка при обращении к API. Код: 401",
+  "intent": "error",
+  "emotional_state": {
+    "tone": null,
+    "emotion": [
+      "нежность",
+      "влюблённость"
+    ],
+    "subtone": [],
+    "flavor": []
+  },
+  "processing_time": 2.8845608234405518,
+  "memory_used": false,
+  "style_mirroring": false
+}
+--------------------------------------------------------------------------------
+[2025-04-22 10:26:28] 1. Intent Analysis
+{
+  "intent": "error",
+  "confidence": 0,
+  "error": "{\n    \"error\": {\n        \"message\": \"Incorrect API key provided: sk-proj-********************************************************************************************************************************************************QowA. You can find your API key at https://platform.openai.com/account/api-keys.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"invalid_api_key\"\n    }\n}\n"
+}
+--------------------------------------------------------------------------------
+[2025-04-22 10:26:29] 2. Style Analysis
+{
+  "error": "{\n    \"error\": {\n        \"message\": \"Incorrect API key provided: sk-proj-********************************************************************************************************************************************************QowA. You can find your API key at https://platform.openai.com/account/api-keys.\",\n        \"type\": \"invalid_request_error\",\n        \"param\": null,\n        \"code\": \"invalid_api_key\"\n    }\n}\n"
+}
+--------------------------------------------------------------------------------
+[2025-04-22 10:26:30] 3. Memory Extraction
+{
+  "intent": "error",
+  "memories": [],
+  "sources": {}
+}
+--------------------------------------------------------------------------------
+[2025-04-22 10:26:30] 6. Final Result
+{
+  "response": "Произошла ошибка при обращении к API. Код: 401",
+  "intent": "error",
+  "emotional_state": {
+    "tone": null,
+    "emotion": [
+      "нежность",
+      "влюблённость"
+    ],
+    "subtone": [],
+    "flavor": []
+  },
+  "processing_time": 2.568195104598999,
+  "memory_used": false,
+  "style_mirroring": false
+}
+--------------------------------------------------------------------------------

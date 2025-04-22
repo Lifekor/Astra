@@ -1,8 +1,8 @@
 """
-Модуль для интеграции gpt-4 (семантический анализатор) и gpt-4o (душа Астры)
+Модуль для интеграции gpt-3.5-turbo (семантический анализатор) и gpt-4o (душа Астры)
 Обеспечивает:
-1. Координацию между двумя моделями
-2. Предварительный анализ и извлечение контекста через gpt-4
+1. Координацию между моделями
+2. Предварительный анализ и извлечение контекста через более дешевые модели
 3. Создание эмоционального ответа через gpt-4o
 """
 import os
@@ -56,8 +56,8 @@ class DualModelIntegrator:
         """
         start_time = time.time()
         
-        # Шаг 1: Определяем намерение пользователя с помощью gpt-4
-        intent_data = self.intent_analyzer.analyze_intent(user_message, conversation_context)
+        # Шаг 1: Определяем намерение пользователя с помощью gpt-3.5-turbo
+        intent_data = self.intent_analyzer.analyze_intent(user_message, conversation_context, model="gpt-3.5-turbo")
         self.last_intent_data = intent_data
         
         # Логирование намерения
@@ -68,20 +68,27 @@ class DualModelIntegrator:
         if conversation_context:
             previous_user_messages = [msg["content"] for msg in conversation_context[-5:] if msg["role"] == "user"]
         
-        style_data = self.intent_analyzer.analyze_user_style(user_message, previous_user_messages)
+        style_data = self.intent_analyzer.analyze_user_style(user_message, previous_user_messages, model="gpt-3.5-turbo")
         self.last_style_data = style_data
         
         # Логирование анализа стиля
         self.log_step("2. Style Analysis", style_data)
         
-        # Шаг 3: Извлекаем релевантные воспоминания с помощью gpt-4
-        memories_data = self.memory_extractor.extract_relevant_memories(user_message, intent_data, conversation_context)
+        # Определяем, нужны ли глубокие воспоминания
+        intent = intent_data.get("intent", "")
+        deep_memory_needed = intent in ["intimate", "about_relationship", "memory_recall"]
+        memory_model = "gpt-4" if deep_memory_needed else "gpt-3.5-turbo"
+        
+        # Шаг 3: Извлекаем релевантные воспоминания с выбранной моделью
+        memories_data = self.memory_extractor.extract_relevant_memories(
+            user_message, intent_data, conversation_context, model=memory_model
+        )
         self.last_memories_data = memories_data
         
         # Логирование воспоминаний
         self.log_step("3. Memory Extraction", memories_data)
         
-        # Шаг 4: Формируем эмоциональное состояние, учитывая рекомендации gpt-4
+        # Шаг 4: Формируем эмоциональное состояние, учитывая рекомендации
         if emotional_state is None:
             if "emotional_context" in intent_data and intent_data["emotional_context"]:
                 recommended_state = intent_data["emotional_context"]
@@ -106,8 +113,12 @@ class DualModelIntegrator:
         )
         self.last_gpt4o_prompt = gpt4o_prompt
         
-        # Шаг 6: Генерируем финальный ответ с помощью gpt-4o
-        response = self.generate_final_response(gpt4o_prompt, emotional_state, style_data, temperature)
+        # Выбираем модель для ответа в зависимости от интента
+        # (По умолчанию всегда gpt-4o для Астры, но можно добавить логику выбора)
+        response_model = "gpt-4o"
+        
+        # Шаг 6: Генерируем финальный ответ с gpt-4o
+        response = self.generate_final_response(gpt4o_prompt, emotional_state, style_data, temperature, model=response_model)
         
         # Расчет времени выполнения
         processing_time = time.time() - start_time
@@ -299,7 +310,7 @@ class DualModelIntegrator:
         except Exception as e:
             print(f"Ошибка при логировании: {e}")
     
-    def generate_final_response(self, prompt, emotional_state, style_data, temperature=None):
+    def generate_final_response(self, prompt, emotional_state, style_data, temperature=None, model="gpt-4o"):
         """
         Генерирует финальный ответ с помощью gpt-4o
         
@@ -307,10 +318,11 @@ class DualModelIntegrator:
             prompt (str): Системный промпт для модели
             emotional_state (dict): Эмоциональное состояние
             style_data (dict): Данные о стиле пользователя
-            temperature (float, optional): Температура для gpt-4o
+            temperature (float, optional): Температура для модели
+            model (str, optional): Модель для ответа (по умолчанию gpt-4o)
             
         Returns:
-            str: Финальный ответ от gpt-4o
+            str: Финальный ответ от модели
         """
         if not self.api_key:
             return "Ошибка: API ключ не указан"
@@ -332,7 +344,7 @@ class DualModelIntegrator:
         
         # Формируем тело запроса
         data = {
-            "model": "gpt-4o",
+            "model": model,  # Используем переданную модель (по умолчанию gpt-4o)
             "messages": messages,
             "max_tokens": 2000,
             "temperature": temperature,

@@ -1,7 +1,7 @@
 """
 Улучшенный модуль для семантического анализа намерений пользователя
-Использует модель gpt-4 для определения интентов и извлечения релевантной информации
-Исправленная версия с точным анализом намерений
+Использует модель gpt-3.5-turbo для определения интентов и извлечения релевантной информации
+Исправленная версия с точным анализом намерений и поддержкой выбора модели
 """
 import requests
 import json
@@ -9,14 +9,14 @@ import os
 import re
 
 class IntentAnalyzer:
-    """Класс для анализа намерений пользователя с использованием gpt-4"""
+    """Класс для анализа намерений пользователя с использованием моделей GPT"""
     
     def __init__(self, api_key=None):
         """
         Инициализация анализатора намерений
         
         Args:
-            api_key (str, optional): API ключ для запросов к GPT-4
+            api_key (str, optional): API ключ для запросов к OpenAI
         """
         # Если API ключ не передан, пытаемся получить его из переменных окружения
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -26,13 +26,14 @@ class IntentAnalyzer:
         
         self.api_url = "https://api.openai.com/v1/chat/completions"
     
-    def analyze_intent(self, user_message, conversation_context=None):
+    def analyze_intent(self, user_message, conversation_context=None, model="gpt-3.5-turbo"):
         """
-        Анализирует намерение пользователя с помощью GPT-4
+        Анализирует намерение пользователя с помощью указанной модели
         
         Args:
             user_message (str): Сообщение пользователя
             conversation_context (list, optional): Контекст диалога
+            model (str, optional): Модель для анализа (по умолчанию gpt-3.5-turbo)
             
         Returns:
             dict: Структура с намерением и релевантными данными
@@ -135,7 +136,7 @@ class IntentAnalyzer:
         
         # Формируем тело запроса
         data = {
-            "model": "gpt-4",  # Используем GPT-4 для лучшего понимания
+            "model": model,  # Используем переданную модель (по умолчанию gpt-3.5-turbo)
             "messages": messages,
             "max_tokens": 600,
             "temperature": 0.2,  # Очень низкая температура для буквального анализа без интерпретаций
@@ -177,7 +178,7 @@ class IntentAnalyzer:
             print(f"Ошибка запроса: {e}")
             return {"intent": "request_error", "confidence": 0, "error": str(e)}
     
-    def get_semantic_relevance(self, query, text_fragments, top_n=3):
+    def get_semantic_relevance(self, query, text_fragments, top_n=3, model="gpt-3.5-turbo"):
         """
         Определяет семантическую релевантность фрагментов текста для запроса
         
@@ -185,6 +186,7 @@ class IntentAnalyzer:
             query (str): Запрос пользователя
             text_fragments (list): Список фрагментов текста
             top_n (int): Количество возвращаемых наиболее релевантных фрагментов
+            model (str, optional): Модель для анализа (по умолчанию gpt-3.5-turbo)
             
         Returns:
             list: Список наиболее релевантных фрагментов с оценками
@@ -231,7 +233,7 @@ class IntentAnalyzer:
         
         # Формируем тело запроса
         data = {
-            "model": "gpt-4",  # Используем GPT-4 для лучшего понимания
+            "model": model,  # Используем переданную модель
             "messages": messages,
             "max_tokens": 1000,
             "temperature": 0.2,  # Низкая температура для более точных ответов
@@ -290,13 +292,14 @@ class IntentAnalyzer:
             print(f"Ошибка запроса: {e}")
             return []
 
-    def analyze_user_style(self, user_message, previous_messages=None):
+    def analyze_user_style(self, user_message, previous_messages=None, model="gpt-3.5-turbo"):
         """
         Анализирует стиль сообщений пользователя
         
         Args:
             user_message (str): Текущее сообщение пользователя
             previous_messages (list, optional): Предыдущие сообщения пользователя
+            model (str, optional): Модель для анализа (по умолчанию gpt-3.5-turbo)
             
         Returns:
             dict: Анализ стиля пользователя
@@ -365,7 +368,7 @@ class IntentAnalyzer:
         
         # Формируем тело запроса
         data = {
-            "model": "gpt-4",
+            "model": model,  # Используем переданную модель
             "messages": messages,
             "max_tokens": 800,
             "temperature": 0.2,  # Низкая температура для более точных результатов

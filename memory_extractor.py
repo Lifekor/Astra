@@ -15,7 +15,7 @@ class MemoryExtractor:
         
         Args:
             memory (AstraMemory): Объект памяти Астры
-            api_key (str, optional): API ключ для запросов к GPT-4
+            api_key (str, optional): API ключ для запросов к OpenAI
         """
         self.memory = memory
         self.intent_analyzer = IntentAnalyzer(api_key)
@@ -105,7 +105,7 @@ class MemoryExtractor:
         
         return fragments
     
-    def extract_relevant_memories(self, user_message, intent_data=None, conversation_context=None):
+    def extract_relevant_memories(self, user_message, intent_data=None, conversation_context=None, model=None):
         """
         Извлекает релевантные воспоминания на основе намерения пользователя
         
@@ -113,6 +113,7 @@ class MemoryExtractor:
             user_message (str): Сообщение пользователя
             intent_data (dict, optional): Данные о намерении пользователя
             conversation_context (list, optional): Контекст диалога
+            model (str, optional): Модель для поиска воспоминаний (по умолчанию выбирается автоматически)
             
         Returns:
             dict: Структура с релевантными воспоминаниями
@@ -123,6 +124,20 @@ class MemoryExtractor:
         
         # Получаем список релевантных типов памяти
         memory_types = intent_data.get("match_memory", [])
+        
+        # Получаем тип интента
+        intent = intent_data.get("intent", "")
+        
+        # Определяем, нужна ли "глубокая" память с использованием gpt-4
+        use_deep_memory = intent in ["intimate", "about_relationship", "memory_recall"] or any(
+            mem_type in ["astra_intimacy", "astra_memories"] for mem_type in memory_types
+        )
+        
+        # Выбираем модель в зависимости от типа воспоминаний, если не задана явно
+        if model is None:
+            model_to_use = "gpt-4" if use_deep_memory else "gpt-3.5-turbo"
+        else:
+            model_to_use = model
         
         # Если список пустой, используем базовые типы в зависимости от намерения
         if not memory_types:
@@ -187,8 +202,10 @@ class MemoryExtractor:
                 "sources": {}
             }
         
-        # Определяем релевантность фрагментов
-        relevant_fragments = self.intent_analyzer.get_semantic_relevance(user_message, all_fragments)
+        # Определяем релевантность фрагментов используя выбранную модель
+        relevant_fragments = self.intent_analyzer.get_semantic_relevance(
+            user_message, all_fragments, model=model_to_use
+        )
         
         # Формируем результат
         result = {
@@ -204,56 +221,3 @@ class MemoryExtractor:
                 result["sources"][text] = fragments_sources[text]
         
         return result
-    
-    def format_memories_for_prompt(self, memories_data, max_fragments=3, include_reasons=False):
-        """
-        Форматирует извлеченные воспоминания для включения в промпт
-        
-        Args:
-            memories_data (dict): Данные о релевантных воспоминаниях
-            max_fragments (int): Максимальное количество фрагментов
-            include_reasons (bool): Включать ли причины релевантности в промпт
-            
-        Returns:
-            str: Отформатированные воспоминания для промпта
-        """
-        if not memories_data or "memories" not in memories_data or not memories_data["memories"]:
-            return ""
-        
-        # Ограничиваем количество фрагментов
-        memories = memories_data["memories"][:max_fragments]
-        
-        # Формируем текст для промпта
-        prompt_text = "🧠 РЕЛЕВАНТНЫЕ ВОСПОМИНАНИЯ:\n\n"
-        
-        for i, memory in enumerate(memories, 1):
-            source = memories_data["sources"].get(memory["text"], "неизвестно")
-            prompt_text += f"Воспоминание {i} (из {source}):\n{memory['text']}\n"
-            
-            if include_reasons and "reason" in memory:
-                prompt_text += f"Причина релевантности: {memory['reason']}\n"
-            
-            prompt_text += "\n"
-        
-        return prompt_text
-
-
-# Пример использования
-if __name__ == "__main__":
-    # Импортируем AstraMemory для теста
-    from astra_memory import AstraMemory
-    
-    memory = AstraMemory()
-    extractor = MemoryExtractor(memory)
-    
-    # Пример извлечения воспоминаний
-    user_message = "Астра, ты помнишь, что мне нравится в музыке?"
-    memories = extractor.extract_relevant_memories(user_message)
-    
-    # Выводим результат
-    print(json.dumps(memories, ensure_ascii=False, indent=2))
-    
-    # Форматируем для промпта
-    prompt_text = extractor.format_memories_for_prompt(memories)
-    print("\nФормат для промпта:")
-    print(prompt_text)
