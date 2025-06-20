@@ -185,12 +185,16 @@ class ConversationManager:
     def search_in_history(self, query):
         """
         Ищет в истории диалога по ключевому запросу
-        
+
         Args:
             query (str): Поисковый запрос
-            
+
         Returns:
-            list: Найденные сообщения
+            list: Список словарей с ключами "message", "context" и "match_score"
+                message (dict): найденное сообщение
+                context (list): соседние сообщения, включающие предыдущее и
+                    следующее
+                match_score (float): степень совпадения запроса
         """
         keywords = self.extract_keywords(query)
         results = []
