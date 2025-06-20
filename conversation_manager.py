@@ -151,7 +151,7 @@ class ConversationManager:
         # Ensure the context is not empty
         if not relevant_messages:
             print("Warning: Empty context! Returning basic message list.")
-            return []
+            return recent_messages
         return relevant_messages
     
     def extract_keywords(self, text):
