@@ -95,11 +95,7 @@ def test_dual_model_integration():
                 f.write(response)
             print("  Полный ответ сохранен в test_integrated_response.txt")
             
-            # Для просмотра полного ответа
-            show_full = input("\nПоказать полный ответ? (y/n): ").lower() == 'y'
-            if show_full:
-                print("\n--- Полный ответ ---")
-                print(response)
+            # Полный ответ сохраняется для последующего просмотра
         
         except Exception as e:
             print(f"❌ Ошибка при получении интегрированного ответа: {e}")
