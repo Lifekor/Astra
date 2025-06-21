@@ -50,3 +50,13 @@ def test_autonomous_disabled():
         mem.auto_update_emotion(phrase, "восхищение")
         data = load_emotions(mem)
         assert all(i.get("trigger") != phrase for i in data)
+
+
+def test_normalization_deduplication():
+    with TemporaryDirectory() as tmp:
+        mem = setup_memory(tmp)
+        mem.add_emotion_to_phrase("Привет!", "радость")
+        mem.add_emotion_to_phrase("привет", "радость")
+        data = load_emotions(mem)
+        assert len(data) == 1
+        assert data[0]["trigger"] == "привет"

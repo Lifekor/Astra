@@ -7,6 +7,7 @@
 """
 import os
 import json
+import re
 from datetime import datetime
 
 # Константы файлов
@@ -67,6 +68,14 @@ class AstraMemory:
     def get_file_path(self, filename):
         """Получает полный путь к файлу"""
         return os.path.join(DATA_DIR, filename)
+
+    def _normalize_phrase(self, phrase: str) -> str:
+        """Normalizes phrases for consistent storage and lookup"""
+        phrase = phrase.lower()
+        # remove punctuation and extra spaces
+        phrase = re.sub(r"[^\w\s]", "", phrase)
+        phrase = " ".join(phrase.split())
+        return phrase.strip()
     
     def load_all_memory(self):
         """Загружает всю память Астры из файлов (только при первом вызове)"""
@@ -459,70 +468,68 @@ class AstraMemory:
         Базовая версия на основе частичного совпадения.
         """
         matches = []
-        input_lower = input_text.lower()
-        
+        input_norm = self._normalize_phrase(input_text)
+
         for item in self.emotion_memory:
-            trigger = item.get("trigger", "").lower()
-            # Простое частичное совпадение
-            if trigger in input_lower or input_lower in trigger:
+            trigger_norm = self._normalize_phrase(item.get("trigger", ""))
+            if trigger_norm in input_norm or input_norm in trigger_norm:
                 matches.append(item)
-        
+
         return matches
     
     def add_emotion_to_phrase(self, trigger, emotion=None, tone=None, subtone=None, flavor=None):
         """Добавляет эмоцию к фразе"""
-        # Проверяем, существует ли уже такая фраза
-        for item in self.emotion_memory:
-            if item.get("trigger") == trigger:
-                # Обновляем существующую запись
-                if emotion is not None:
-                    if isinstance(emotion, list):
-                        item["emotion"] = emotion
-                    else:
-                        item["emotion"] = [emotion]
-                
-                if tone is not None:
-                    item["tone"] = tone
-                
-                if subtone is not None:
-                    if isinstance(subtone, list):
-                        item["subtone"] = subtone
-                    else:
-                        item["subtone"] = [subtone]
-                
-                if flavor is not None:
-                    if isinstance(flavor, list):
-                        item["flavor"] = flavor
-                    else:
-                        if "flavor" not in item:
-                            item["flavor"] = [flavor]
-                        elif isinstance(item["flavor"], list):
-                            if flavor not in item["flavor"]:
-                                item["flavor"].append(flavor)
-                        else:
-                            item["flavor"] = [item["flavor"], flavor]
-                
-                # Сохраняем обновленную память
-                self.save_json_file(EMOTION_MEMORY_FILE, self.emotion_memory)
-                return True
-        
+        norm_trigger = self._normalize_phrase(trigger)
+
+        # Проверяем, существует ли уже такая фраза или похожая
+        entry = self._find_emotion_entry(norm_trigger)
+        if not entry:
+            matches = self.semantic_match(norm_trigger)
+            if matches:
+                entry = matches[0]
+
+        if entry:
+            if emotion is not None:
+                emotions = emotion if isinstance(emotion, list) else [emotion]
+                entry["emotion"] = emotions
+
+            if tone is not None:
+                entry["tone"] = tone
+
+            if subtone is not None:
+                entry["subtone"] = subtone if isinstance(subtone, list) else [subtone]
+
+            if flavor is not None:
+                if isinstance(flavor, list):
+                    entry["flavor"] = flavor
+                else:
+                    existing = entry.get("flavor", [])
+                    if not isinstance(existing, list):
+                        existing = [existing]
+                    if flavor not in existing:
+                        existing.append(flavor)
+                    entry["flavor"] = existing
+
+            self.save_json_file(EMOTION_MEMORY_FILE, self.emotion_memory)
+            return True
+
         # Создаем новую запись
         new_item = {
-            "trigger": trigger
+            "trigger": norm_trigger
         }
-        
+
         if emotion is not None:
             new_item["emotion"] = emotion if isinstance(emotion, list) else [emotion]
-        
+
         if tone is not None:
             new_item["tone"] = tone
-        
+
         if subtone is not None:
             new_item["subtone"] = subtone if isinstance(subtone, list) else [subtone]
-        
+
         if flavor is not None:
             new_item["flavor"] = flavor if isinstance(flavor, list) else [flavor]
-        
+
         self.emotion_memory.append(new_item)
         self.save_json_file(EMOTION_MEMORY_FILE, self.emotion_memory)
         
@@ -749,8 +756,9 @@ class AstraMemory:
     # --- Автономное обновление памяти ---
 
     def _find_emotion_entry(self, phrase):
+        phrase_norm = self._normalize_phrase(phrase)
         for item in self.emotion_memory:
-            if item.get("trigger") == phrase:
+            if self._normalize_phrase(item.get("trigger", "")) == phrase_norm:
                 return item
         return None
 
