@@ -19,3 +19,6 @@ The directory `astra_data/` stores persistent files such as `astra_core_prompt.t
 and emotional memories. Commands like `сохрани в core_prompt` allow updating the
 core prompt, while Astra can autonomously append lines if `allow_core_update` is
 enabled in `AstraMemory`.
+
+## Maintenance
+Run `scripts/cleanup_duplicates.py` to merge duplicate emotion records after updates.
