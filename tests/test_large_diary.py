@@ -10,7 +10,7 @@ import pytest
 
 # Stub requests before importing modules that require it
 requests_stub = types.SimpleNamespace(post=None, exceptions=types.SimpleNamespace(RequestException=Exception))
-sys.modules.setdefault("requests", requests_stub)
+sys.modules["requests"] = requests_stub
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import astra_memory

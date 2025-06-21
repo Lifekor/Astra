@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import astra_memory
 import types
-sys.modules.setdefault("requests", types.ModuleType("requests"))
+requests_stub = types.SimpleNamespace(post=None, exceptions=types.SimpleNamespace(RequestException=Exception))
+sys.modules.setdefault("requests", requests_stub)
 dotenv_stub = types.ModuleType("dotenv")
 dotenv_stub.load_dotenv = lambda *args, **kwargs: None
 sys.modules.setdefault("dotenv", dotenv_stub)
@@ -66,3 +67,13 @@ def test_no_update_when_state_same():
         chat.process_user_message("Привет, как дела?")
         after = load_emotions(mem)
         assert after == before
+
+
+def test_normalization_deduplication():
+    with TemporaryDirectory() as tmp:
+        mem = setup_memory(tmp)
+        mem.add_emotion_to_phrase("Привет!", "радость")
+        mem.add_emotion_to_phrase("привет", "радость")
+        data = load_emotions(mem)
+        assert len(data) == 1
+        assert data[0]["trigger"] == "привет"
