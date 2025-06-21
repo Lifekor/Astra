@@ -65,7 +65,13 @@ class AstraChat:
         
         # Анализируем эмоциональное состояние
         state = self.emotional_analyzer.analyze_message(user_message)
-        
+
+        # Автономное обновление памяти
+        self.memory.auto_update_emotion(user_message, state.get("emotion"))
+        self.memory.auto_update_tone(user_message, state.get("tone"))
+        self.memory.auto_update_subtone(user_message, state.get("subtone"))
+        self.memory.auto_update_flavor(user_message, state.get("flavor"))
+
         # Сохраняем текущее состояние
         self.memory.save_current_state(state)
         
