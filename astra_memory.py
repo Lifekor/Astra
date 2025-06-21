@@ -51,6 +51,10 @@ class AstraMemory:
         self.relationship_memory = {}
         self.current_state = {}
         self.memory_log = []
+
+        # Дополнительные флаги поведения
+        self.allow_core_update = False
+        self.autonomous_memory = False
         
         # Загружаем память один раз при инициализации
         self.load_all_memory()
@@ -565,6 +569,12 @@ class AstraMemory:
         file_path = self.get_file_path(filename)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def save_text_file(self, filename, text):
+        """Сохраняет строку в текстовый файл"""
+        file_path = self.get_file_path(filename)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(text)
     
     def append_to_jsonl(self, filename, data):
         """Добавляет запись в JSONL файл"""
@@ -594,6 +604,18 @@ class AstraMemory:
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(self.core_prompt)
         return True
+
+    def append_to_core_prompt(self, new_line: str):
+        """Добавляет строку в core_prompt, если обновление разрешено"""
+        if not self.allow_core_update:
+            return False
+        line = new_line.strip()
+        if line and line not in self.core_prompt:
+            self.core_prompt += f"\n{line}"
+            self.save_text_file(ASTRA_CORE_FILE, self.core_prompt)
+            print("\U0001F4DD Astra обновила свой core_prompt.")
+            return True
+        return False
     
     def load_current_state(self):
         """Загружает текущее эмоциональное состояние"""

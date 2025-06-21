@@ -345,6 +345,8 @@ class AstraDiary:
             return False
         
         # Добавляем новую строку в core_prompt
+        if hasattr(self.memory, 'append_to_core_prompt'):
+            return self.memory.append_to_core_prompt(realization)
         return self.memory.save_to_core_prompt(realization)
     
     def generate_dream(self):
