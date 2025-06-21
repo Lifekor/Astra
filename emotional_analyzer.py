@@ -36,8 +36,8 @@ class EmotionalAnalyzer:
         if trigger_state:
             return trigger_state
         
-        # Используем обычный анализ
-        return self.memory.decide_response_emotion(message)
+        # Используем рефлексивный анализ
+        return self.memory.reflective_state_for_message(message)
     
     def detect_emotional_markers(self, message):
         """
