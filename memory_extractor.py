@@ -204,7 +204,12 @@ class MemoryExtractor:
         
         # Определяем релевантность фрагментов используя выбранную модель
         relevant_fragments = self.intent_analyzer.get_semantic_relevance(
-            user_message, all_fragments, model=model_to_use
+            user_message,
+            all_fragments,
+            model=model_to_use,
+            intent=intent,
+            strategy="compact_relevance",
+            memory_token_limit=800,
         )
         
         # Формируем результат
