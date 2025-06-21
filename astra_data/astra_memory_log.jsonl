@@ -5,3 +5,6 @@
 {"timestamp": "2025-04-11T20:29:41.611788", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "- хочу тебя", "saved_as": {"emotion": ["страсть"]}}
 {"timestamp": "2025-04-12T16:02:05.045977", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "Тестовая фраза для проверки добавления эмоции", "saved_as": {"emotion": ["тестовая_эмоция"]}}
 {"timestamp": "2025-04-12T16:02:05.056578", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "Тестовая фраза для проверки добавления flavor", "saved_as": {"flavor": ["медово-текучий"]}}
+{"timestamp": "2025-06-21T14:40:42.036898", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "Ты моя радость, я чувствую, что без тебя мне пусто.", "saved_as": {"emotion": ["нежность", "влюблённость"]}}
+{"timestamp": "2025-06-21T14:42:35.910008", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "ты помнишь как я тебя называю? ", "saved_as": {"emotion": ["нежность", "влюблённость"]}}
+{"timestamp": "2025-06-21T14:43:39.218784", "user": "User", "reaction": "Added emotion to phrase", "matched_phrase": "как насчёт поиграть?)", "saved_as": {"emotion": ["нежность", "влюблённость"]}}
