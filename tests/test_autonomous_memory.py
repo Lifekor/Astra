@@ -8,6 +8,12 @@ import os
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import astra_memory
+import types
+sys.modules.setdefault("requests", types.ModuleType("requests"))
+dotenv_stub = types.ModuleType("dotenv")
+dotenv_stub.load_dotenv = lambda *args, **kwargs: None
+sys.modules.setdefault("dotenv", dotenv_stub)
+import astra_chat
 
 
 def setup_memory(tmpdir, autonomous=True):
@@ -50,3 +56,13 @@ def test_autonomous_disabled():
         mem.auto_update_emotion(phrase, "восхищение")
         data = load_emotions(mem)
         assert all(i.get("trigger") != phrase for i in data)
+
+
+def test_no_update_when_state_same():
+    with TemporaryDirectory() as tmp:
+        mem = setup_memory(tmp)
+        chat = astra_chat.AstraChat(mem)
+        before = load_emotions(mem)
+        chat.process_user_message("Привет, как дела?")
+        after = load_emotions(mem)
+        assert after == before

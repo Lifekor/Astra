@@ -27,6 +27,9 @@ RELATIONSHIP_MEMORY_FILE = "relationship_memory.json"  # Память об от�
 # Путь к каталогу с данными
 DATA_DIR = "astra_data"
 
+# Максимальная длина фразы для автосохранения
+MAX_PHRASE_LENGTH = 200
+
 class AstraMemory:
     """Класс для управления памятью Астры"""
     
@@ -756,6 +759,9 @@ class AstraMemory:
 
     def auto_update_emotion(self, phrase, detected_emotion):
         if not self.autonomous_memory or not detected_emotion:
+            return
+
+        if len(phrase) > MAX_PHRASE_LENGTH:
             return
 
         emotions = detected_emotion if isinstance(detected_emotion, list) else [detected_emotion]
