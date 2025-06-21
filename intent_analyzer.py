@@ -230,79 +230,109 @@ class IntentAnalyzer:
         Возвращай только JSON, без дополнительного текста.
         """
         
-        # Формируем сообщения для API
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Запрос: {query}\n\nФрагменты:\n" + "\n".join([f"{i}: {fragment}" for i, fragment in enumerate(text_fragments)])}
-        ]
-        
-        # Формируем заголовки запроса
+        # Разбиваем фрагменты на батчи по количеству токенов, чтобы не превышать контекст модели
+        context_limit = 8192
+        safe_limit = int(context_limit * 0.7)  # запас по контексту
+
+        batches = []
+        batch = []
+        batch_tokens = 0
+        start_idx = 0
+
+        for idx, fragment in enumerate(text_fragments):
+            tokens = len(fragment.split())
+            if batch and batch_tokens + tokens > safe_limit:
+                batches.append((start_idx, batch))
+                batch = [fragment]
+                start_idx = idx
+                batch_tokens = tokens
+            else:
+                if not batch:
+                    start_idx = idx
+                batch.append(fragment)
+                batch_tokens += tokens
+
+        if batch:
+            batches.append((start_idx, batch))
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        
-        # Формируем тело запроса
-        data = {
-            "model": model,  # Используем переданную модель
-            "messages": messages,
-            "max_tokens": 1000,
-            "temperature": 0.2,  # Низкая температура для более точных ответов
-            "top_p": 1.0,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0
-        }
-        
-        try:
-            # Отправляем запрос к API
-            response = requests.post(self.api_url, headers=headers, json=data)
-            time.sleep(0.6)
-            
-            # Проверяем наличие ошибок
-            if response.status_code != 200:
-                print(f"Ошибка API (код {response.status_code}):")
-                print(response.text)
-                return []
-            
-            # Получаем ответ
-            result = response.json()
-            assistant_message = result["choices"][0]["message"]["content"]
-            
-            # Парсим JSON из ответа
+
+        all_relevance = []
+
+        for offset, batch_fragments in batches:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": f"Запрос: {query}\n\nФрагменты:\n"
+                    + "\n".join(
+                        [f"{i}: {fragment}" for i, fragment in enumerate(batch_fragments)]
+                    ),
+                },
+            ]
+
+            data = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": 1000,
+                "temperature": 0.2,
+                "top_p": 1.0,
+                "frequency_penalty": 0.0,
+                "presence_penalty": 0.0,
+            }
+
             try:
-                # Ищем JSON в ответе с помощью регулярного выражения
-                json_match = re.search(r'(\[[\s\S]*\])', assistant_message)
-                if json_match:
-                    json_str = json_match.group(1)
-                    relevance_data = json.loads(json_str)
-                    
-                    # Сортируем по релевантности
-                    relevance_data.sort(key=lambda x: x["relevance"], reverse=True)
-                    
-                    # Возвращаем top_n наиболее релевантных фрагментов
-                    top_fragments = []
-                    for item in relevance_data[:top_n]:
-                        index = item["index"]
-                        if 0 <= index < len(text_fragments):
-                            top_fragments.append({
-                                "text": text_fragments[index],
-                                "relevance": item["relevance"],
-                                "reason": item.get("reason", ""),
-                                "emotional_weight": item.get("emotional_weight", 0.5)
-                            })
-                    
-                    return top_fragments
-                else:
-                    print(f"Не удалось извлечь JSON из ответа: {assistant_message}")
-                    return []
-            
-            except json.JSONDecodeError as e:
-                print(f"Ошибка парсинга JSON: {e}\nОтвет: {assistant_message}")
-                return []
-            
-        except requests.exceptions.RequestException as e:
-            print(f"Ошибка запроса: {e}")
+                response = requests.post(self.api_url, headers=headers, json=data)
+                time.sleep(0.6)
+
+                if response.status_code != 200:
+                    print(f"Ошибка API (код {response.status_code}):")
+                    print(response.text)
+                    continue
+
+                result = response.json()
+                assistant_message = result["choices"][0]["message"]["content"]
+
+                try:
+                    json_match = re.search(r'(\[[\s\S]*\])', assistant_message)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        relevance_data = json.loads(json_str)
+
+                        for item in relevance_data:
+                            item["index"] = item.get("index", 0) + offset
+                            all_relevance.append(item)
+                    else:
+                        print(
+                            f"Не удалось извлечь JSON из ответа: {assistant_message}"
+                        )
+                except json.JSONDecodeError as e:
+                    print(f"Ошибка парсинга JSON: {e}\nОтвет: {assistant_message}")
+            except requests.exceptions.RequestException as e:
+                print(f"Ошибка запроса: {e}")
+
+        if not all_relevance:
             return []
+
+        all_relevance.sort(key=lambda x: x["relevance"], reverse=True)
+
+        top_fragments = []
+        for item in all_relevance[:top_n]:
+            index = item.get("index", 0)
+            if 0 <= index < len(text_fragments):
+                top_fragments.append(
+                    {
+                        "text": text_fragments[index],
+                        "relevance": item.get("relevance", 0),
+                        "reason": item.get("reason", ""),
+                        "emotional_weight": item.get("emotional_weight", 0.5),
+                    }
+                )
+
+        return top_fragments
 
     def analyze_user_style(self, user_message, previous_messages=None, model="gpt-3.5-turbo"):
         """
