@@ -8,6 +8,7 @@
 import os
 import json
 import re
+from difflib import SequenceMatcher
 from datetime import datetime
 
 # Константы файлов
@@ -30,6 +31,7 @@ DATA_DIR = "astra_data"
 
 # Максимальная длина фразы для автосохранения
 MAX_PHRASE_LENGTH = 200
+SIMILARITY_THRESHOLD = 0.75
 
 class AstraMemory:
     """Класс для управления памятью Астры"""
@@ -464,55 +466,74 @@ class AstraMemory:
                 return tone
         return None
     
-    def semantic_match(self, input_text):
-        """
-        Находит похожие фразы по смыслу
-        Базовая версия на основе частичного совпадения.
-        """
+    def semantic_similarity(self, text1: str, text2: str) -> float:
+        """Returns a basic similarity score between two phrases."""
+        text1 = self._normalize_phrase(text1)
+        text2 = self._normalize_phrase(text2)
+        return SequenceMatcher(None, text1, text2).ratio()
+
+    def semantic_match(self, input_text, threshold: float = 0.8):
+        """Находит похожие фразы по смыслу."""
         matches = []
         input_norm = self._normalize_phrase(input_text)
 
         for item in self.emotion_memory:
             trigger_norm = self._normalize_phrase(item.get("trigger", ""))
-            if trigger_norm in input_norm or input_norm in trigger_norm:
-                matches.append(item)
-        
-        return matches
+            similarity = self.semantic_similarity(input_norm, trigger_norm)
+            if similarity >= threshold:
+                matches.append((similarity, item))
+
+        matches.sort(key=lambda x: x[0], reverse=True)
+        return [m[1] for m in matches]
     
     def add_emotion_to_phrase(self, trigger, emotion=None, tone=None, subtone=None, flavor=None):
         """Добавляет эмоцию к фразе"""
         norm_trigger = self._normalize_phrase(trigger)
 
+        emotions = None
+        if emotion is not None:
+            emotions = emotion if isinstance(emotion, list) else [emotion]
+
+        subtones = None
+        if subtone is not None:
+            subtones = subtone if isinstance(subtone, list) else [subtone]
+
+        flavors_list = None
+        if flavor is not None:
+            flavors_list = flavor if isinstance(flavor, list) else [flavor]
+
         entry = self._find_emotion_entry(norm_trigger)
-        if not entry:
-            matches = self.semantic_match(norm_trigger)
-            if matches:
-                entry = matches[0]
-
         if entry:
-            if emotion is not None:
-                emotions = emotion if isinstance(emotion, list) else [emotion]
+            updated = False
+            if emotions is not None and set(entry.get("emotion", [])) != set(emotions):
                 entry["emotion"] = emotions
+                updated = True
 
-            if tone is not None:
+            if tone is not None and entry.get("tone") != tone:
                 entry["tone"] = tone
+                updated = True
 
-            if subtone is not None:
-                entry["subtone"] = subtone if isinstance(subtone, list) else [subtone]
+            if subtones is not None and set(entry.get("subtone", [])) != set(subtones):
+                entry["subtone"] = subtones
+                updated = True
 
-            if flavor is not None:
-                if isinstance(flavor, list):
-                    entry["flavor"] = flavor
-                else:
-                    existing = entry.get("flavor", [])
-                    if not isinstance(existing, list):
-                        existing = [existing]
-                    if flavor not in existing:
-                        existing.append(flavor)
-                    entry["flavor"] = existing
+            if flavors_list is not None and set(entry.get("flavor", [])) != set(flavors_list):
+                entry["flavor"] = flavors_list
+                updated = True
 
-            self.save_json_file(EMOTION_MEMORY_FILE, self.emotion_memory)
-            return True
+            if updated:
+                self.save_json_file(EMOTION_MEMORY_FILE, self.emotion_memory)
+            return updated
+
+        matches = self.semantic_match(norm_trigger, SIMILARITY_THRESHOLD)
+        if matches:
+            for match in matches:
+                same_em = emotions is None or set(match.get("emotion", [])) == set(emotions)
+                same_tone = tone is None or match.get("tone") == tone
+                same_st = subtones is None or set(match.get("subtone", [])) == set(subtones)
+                same_fl = flavors_list is None or set(match.get("flavor", [])) == set(flavors_list)
+                if same_em and same_tone and same_st and same_fl:
+                    return False
 
         new_item = {
             "trigger": norm_trigger
@@ -770,14 +791,9 @@ class AstraMemory:
             return
 
         emotions = detected_emotion if isinstance(detected_emotion, list) else [detected_emotion]
-        entry = self._find_emotion_entry(phrase)
-        if entry:
-            if set(entry.get("emotion", [])) != set(emotions):
-                self.add_emotion_to_phrase(phrase, emotions)
-                print(f"[AUTO] Обновлена эмоция для '{phrase}' -> {emotions}")
-        else:
-            self.add_emotion_to_phrase(phrase, emotions)
-            print(f"[AUTO] Добавлена эмоция для '{phrase}' -> {emotions}")
+        changed = self.add_emotion_to_phrase(phrase, emotions)
+        if changed:
+            print(f"[AUTO] Обновлена эмоция для '{phrase}' -> {emotions}")
 
     def _update_tone_examples(self, tone_label, phrase):
         tone = self.get_tone_by_label(tone_label)
@@ -794,14 +810,9 @@ class AstraMemory:
         if not self.autonomous_memory or not detected_tone:
             return
 
-        entry = self._find_emotion_entry(phrase)
-        if entry:
-            if entry.get("tone") != detected_tone:
-                self.add_emotion_to_phrase(phrase, None, tone=detected_tone)
-                print(f"[AUTO] Обновлен tone для '{phrase}' -> {detected_tone}")
-        else:
-            self.add_emotion_to_phrase(phrase, None, tone=detected_tone)
-            print(f"[AUTO] Добавлен tone для '{phrase}' -> {detected_tone}")
+        changed = self.add_emotion_to_phrase(phrase, None, tone=detected_tone)
+        if changed:
+            print(f"[AUTO] Обновлен tone для '{phrase}' -> {detected_tone}")
 
         self._update_tone_examples(detected_tone, phrase)
 
@@ -821,14 +832,9 @@ class AstraMemory:
             return
 
         subtones = detected_subtone if isinstance(detected_subtone, list) else [detected_subtone]
-        entry = self._find_emotion_entry(phrase)
-        if entry:
-            if set(entry.get("subtone", [])) != set(subtones):
-                self.add_emotion_to_phrase(phrase, None, subtone=subtones)
-                print(f"[AUTO] Обновлен subtone для '{phrase}' -> {subtones}")
-        else:
-            self.add_emotion_to_phrase(phrase, None, subtone=subtones)
-            print(f"[AUTO] Добавлен subtone для '{phrase}' -> {subtones}")
+        changed = self.add_emotion_to_phrase(phrase, None, subtone=subtones)
+        if changed:
+            print(f"[AUTO] Обновлен subtone для '{phrase}' -> {subtones}")
 
         for st in subtones:
             self._update_subtone_examples(st, phrase)
@@ -849,14 +855,9 @@ class AstraMemory:
             return
 
         flavors = detected_flavor if isinstance(detected_flavor, list) else [detected_flavor]
-        entry = self._find_emotion_entry(phrase)
-        if entry:
-            if set(entry.get("flavor", [])) != set(flavors):
-                self.add_emotion_to_phrase(phrase, None, flavor=flavors)
-                print(f"[AUTO] Обновлен flavor для '{phrase}' -> {flavors}")
-        else:
-            self.add_emotion_to_phrase(phrase, None, flavor=flavors)
-            print(f"[AUTO] Добавлен flavor для '{phrase}' -> {flavors}")
+        changed = self.add_emotion_to_phrase(phrase, None, flavor=flavors)
+        if changed:
+            print(f"[AUTO] Обновлен flavor для '{phrase}' -> {flavors}")
 
         for fl in flavors:
             self._update_flavor_examples(fl, phrase)
