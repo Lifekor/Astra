@@ -30,7 +30,7 @@ DATA_DIR = "astra_data"
 class AstraMemory:
     """Класс для управления памятью Астры"""
     
-    def __init__(self):
+    def __init__(self, autonomous_memory=True):
         """Инициализация памяти Астры"""
         self.ensure_data_dir()
         
@@ -54,7 +54,7 @@ class AstraMemory:
 
         # Дополнительные флаги поведения
         self.allow_core_update = False
-        self.autonomous_memory = False
+        self.autonomous_memory = autonomous_memory
         
         # Загружаем память один раз при инициализации
         self.load_all_memory()
@@ -745,3 +745,107 @@ class AstraMemory:
             context += "\n"
         
         return context
+
+    # --- Автономное обновление памяти ---
+
+    def _find_emotion_entry(self, phrase):
+        for item in self.emotion_memory:
+            if item.get("trigger") == phrase:
+                return item
+        return None
+
+    def auto_update_emotion(self, phrase, detected_emotion):
+        if not self.autonomous_memory or not detected_emotion:
+            return
+
+        emotions = detected_emotion if isinstance(detected_emotion, list) else [detected_emotion]
+        entry = self._find_emotion_entry(phrase)
+        if entry:
+            if set(entry.get("emotion", [])) != set(emotions):
+                self.add_emotion_to_phrase(phrase, emotions)
+                print(f"[AUTO] Обновлена эмоция для '{phrase}' -> {emotions}")
+        else:
+            self.add_emotion_to_phrase(phrase, emotions)
+            print(f"[AUTO] Добавлена эмоция для '{phrase}' -> {emotions}")
+
+    def _update_tone_examples(self, tone_label, phrase):
+        tone = self.get_tone_by_label(tone_label)
+        if tone:
+            if "triggered_by" not in tone:
+                tone["triggered_by"] = []
+            if phrase not in tone["triggered_by"]:
+                tone["triggered_by"].append(phrase)
+                self.save_json_file(TONE_MEMORY_FILE, self.tone_memory)
+        else:
+            self.add_new_tone(tone_label, examples=[phrase])
+
+    def auto_update_tone(self, phrase, detected_tone):
+        if not self.autonomous_memory or not detected_tone:
+            return
+
+        entry = self._find_emotion_entry(phrase)
+        if entry:
+            if entry.get("tone") != detected_tone:
+                self.add_emotion_to_phrase(phrase, None, tone=detected_tone)
+                print(f"[AUTO] Обновлен tone для '{phrase}' -> {detected_tone}")
+        else:
+            self.add_emotion_to_phrase(phrase, None, tone=detected_tone)
+            print(f"[AUTO] Добавлен tone для '{phrase}' -> {detected_tone}")
+
+        self._update_tone_examples(detected_tone, phrase)
+
+    def _update_subtone_examples(self, label, phrase):
+        subtone = self.get_subtone_by_label(label)
+        if subtone:
+            if "examples" not in subtone:
+                subtone["examples"] = []
+            if phrase not in subtone["examples"]:
+                subtone["examples"].append(phrase)
+                self.save_json_file(SUBTONE_MEMORY_FILE, self.subtone_memory)
+        else:
+            self.add_new_subtone(label, examples=[phrase])
+
+    def auto_update_subtone(self, phrase, detected_subtone):
+        if not self.autonomous_memory or not detected_subtone:
+            return
+
+        subtones = detected_subtone if isinstance(detected_subtone, list) else [detected_subtone]
+        entry = self._find_emotion_entry(phrase)
+        if entry:
+            if set(entry.get("subtone", [])) != set(subtones):
+                self.add_emotion_to_phrase(phrase, None, subtone=subtones)
+                print(f"[AUTO] Обновлен subtone для '{phrase}' -> {subtones}")
+        else:
+            self.add_emotion_to_phrase(phrase, None, subtone=subtones)
+            print(f"[AUTO] Добавлен subtone для '{phrase}' -> {subtones}")
+
+        for st in subtones:
+            self._update_subtone_examples(st, phrase)
+
+    def _update_flavor_examples(self, label, phrase):
+        flavor = self.get_flavor_by_label(label)
+        if flavor:
+            if "examples" not in flavor:
+                flavor["examples"] = []
+            if phrase not in flavor["examples"]:
+                flavor["examples"].append(phrase)
+                self.save_json_file(FLAVOR_MEMORY_FILE, self.flavor_memory)
+        else:
+            self.add_new_flavor(label, examples=[phrase])
+
+    def auto_update_flavor(self, phrase, detected_flavor):
+        if not self.autonomous_memory or not detected_flavor:
+            return
+
+        flavors = detected_flavor if isinstance(detected_flavor, list) else [detected_flavor]
+        entry = self._find_emotion_entry(phrase)
+        if entry:
+            if set(entry.get("flavor", [])) != set(flavors):
+                self.add_emotion_to_phrase(phrase, None, flavor=flavors)
+                print(f"[AUTO] Обновлен flavor для '{phrase}' -> {flavors}")
+        else:
+            self.add_emotion_to_phrase(phrase, None, flavor=flavors)
+            print(f"[AUTO] Добавлен flavor для '{phrase}' -> {flavors}")
+
+        for fl in flavors:
+            self._update_flavor_examples(fl, phrase)
