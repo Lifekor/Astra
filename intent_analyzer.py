@@ -189,7 +189,16 @@ class IntentAnalyzer:
             print(f"Ошибка запроса: {e}")
             return {"intent": "request_error", "confidence": 0, "error": str(e)}
     
-    def get_semantic_relevance(self, query, text_fragments, top_n=3, model="gpt-3.5-turbo"):
+    def get_semantic_relevance(
+        self,
+        query,
+        text_fragments,
+        top_n=3,
+        model="gpt-3.5-turbo",
+        intent=None,
+        strategy="compact_relevance",
+        memory_token_limit=1500,
+    ):
         """
         Определяет семантическую релевантность фрагментов текста для запроса
         
@@ -317,22 +326,52 @@ class IntentAnalyzer:
         if not all_relevance:
             return []
 
-        all_relevance.sort(key=lambda x: x["relevance"], reverse=True)
+        # Приоритезация с учетом стратегии и интента
+        def priority_score(d):
+            score = d.get("relevance", 0)
+            emo = d.get("emotional_weight", 0)
 
-        top_fragments = []
-        for item in all_relevance[:top_n]:
+            if strategy == "verbose_emotion" or (intent in ["intimate", "emotional_support"]):
+                score = 0.7 * score + 0.3 * emo
+            else:
+                score = 0.9 * score + 0.1 * emo
+            return score
+
+        for item in all_relevance:
+            item["_priority"] = priority_score(item)
+
+        all_relevance.sort(key=lambda x: x["_priority"], reverse=True)
+
+        selected = []
+        used_tokens = 0
+
+        for item in all_relevance:
+            if len(selected) >= top_n:
+                break
             index = item.get("index", 0)
-            if 0 <= index < len(text_fragments):
-                top_fragments.append(
-                    {
-                        "text": text_fragments[index],
-                        "relevance": item.get("relevance", 0),
-                        "reason": item.get("reason", ""),
-                        "emotional_weight": item.get("emotional_weight", 0.5),
-                    }
-                )
+            if not 0 <= index < len(text_fragments):
+                continue
 
-        return top_fragments
+            text = text_fragments[index]
+            if strategy == "compact_relevance":
+                text = " ".join(text.split()[:50])
+
+            tokens = len(text.split())
+            if used_tokens + tokens > memory_token_limit:
+                continue
+            used_tokens += tokens
+
+            entry = {
+                "text": text,
+                "relevance": item.get("relevance", 0),
+                "reason": item.get("reason", ""),
+                "emotional_weight": item.get("emotional_weight", 0.5),
+            }
+            if strategy == "trace_mode":
+                entry["index"] = index
+            selected.append(entry)
+
+        return selected
 
     def analyze_user_style(self, user_message, previous_messages=None, model="gpt-3.5-turbo"):
         """
