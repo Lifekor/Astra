@@ -296,5 +296,19 @@ class AstraCommandParser:
         self.memory.chat.conversation_manager.save_history_to_disk()
         
         history_count = len(self.memory.chat.conversation_manager.full_conversation_history)
-        
-        return f"Я сохранила историю нашего диалога ({history_count} сообщений)."    
+
+        return f"Я сохранила историю нашего диалога ({history_count} сообщений)."
+
+    def _handle_save_to_core_prompt(self, text, text_lower):
+        """Сохраняет заданный текст в core_prompt"""
+        start = text_lower.find("сохрани в core_prompt")
+        if start == -1:
+            return "Не поняла, что нужно сохранить."
+        content = text[start + len("сохрани в core_prompt"):].strip().strip('"')
+        if not content:
+            return "Не указано, что сохранить в core_prompt."
+        if hasattr(self.memory, 'append_to_core_prompt'):
+            success = self.memory.append_to_core_prompt(content)
+        else:
+            success = self.memory.save_to_core_prompt(content)
+        return "Добавила в core_prompt." if success else "Не удалось сохранить." 
