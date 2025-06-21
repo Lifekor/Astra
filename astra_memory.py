@@ -695,7 +695,7 @@ class AstraMemory:
         """
         # Анализируем входной текст
         analysis = self.semantic_match(context)
-        
+
         # Проверяем наличие триггеров в контексте
         for trigger in self.trigger_phrases:
             trigger_phrase = trigger.get("trigger", "").lower()
@@ -706,42 +706,118 @@ class AstraMemory:
                     "subtone": [trigger.get("sets", {}).get("subtone")] if trigger.get("sets", {}).get("subtone") else [],
                     "flavor": trigger.get("sets", {}).get("flavor", [])
                 }
-        
+
         # В простом случае берем эмоцию из последнего предложения, если она есть
         if analysis:
             matched_items = []
             for match in analysis:
                 if match.get("tone") or match.get("emotion") or match.get("subtone") or match.get("flavor"):
                     matched_items.append(match)
-            
+
             if matched_items:
                 last_match = matched_items[-1]
-                
+
                 tone = None
                 if isinstance(last_match.get("tone"), dict) and "label" in last_match["tone"]:
                     tone = last_match["tone"]["label"]
-                
+
                 subtones = []
                 if last_match.get("subtone") and isinstance(last_match["subtone"], list):
                     for subtone in last_match["subtone"]:
                         if isinstance(subtone, dict) and "label" in subtone:
                             subtones.append(subtone["label"])
-                
+
                 flavors = []
                 if last_match.get("flavor") and isinstance(last_match["flavor"], list):
                     for flavor in last_match["flavor"]:
                         if isinstance(flavor, dict) and "label" in flavor:
                             flavors.append(flavor["label"])
-                
+
                 return {
                     "tone": tone,
                     "emotion": last_match.get("emotion", []),
                     "subtone": subtones,
                     "flavor": flavors
                 }
-        
+
         # Если нет конкретных эмоций, используем текущее состояние
         return self.current_state
+
+    def recommend_emotional_state(self, text, threshold: float = 0.6):
+        """Подыскивает состояние на основе похожих фраз в памяти."""
+        # Ищем в emotion_memory
+        matches = self.semantic_match(text, threshold)
+        if matches:
+            item = matches[0]
+            result = {
+                "tone": item.get("tone"),
+                "emotion": item.get("emotion", []),
+                "subtone": item.get("subtone", []),
+                "flavor": item.get("flavor", [])
+            }
+            return result
+
+        best_flavor = None
+        best_score = 0.0
+        for flav in self.flavor_memory:
+            for ex in flav.get("examples", []):
+                score = self.semantic_similarity(text, ex)
+                if score >= threshold and score > best_score:
+                    best_flavor = flav.get("label")
+                    best_score = score
+
+        if best_flavor:
+            return {
+                "tone": None,
+                "emotion": [],
+                "subtone": [],
+                "flavor": [best_flavor]
+            }
+
+        return None
+
+    def _smooth_transition_state(self, target_state):
+        """Плавно меняет состояние, опираясь на предыдущее."""
+        state = dict(self.current_state)
+
+        if target_state.get("tone") and target_state["tone"] != state.get("tone"):
+            state["tone"] = target_state["tone"]
+
+        if target_state.get("emotion"):
+            prev = state.get("emotion", [])
+            new = target_state["emotion"]
+            if prev != new:
+                merged = prev + (["лёгкая теплота"] if "лёгкая теплота" not in prev and "лёгкая теплота" not in new else [])
+                for em in new:
+                    if em not in merged:
+                        merged.append(em)
+                state["emotion"] = merged
+
+        if target_state.get("subtone") and set(target_state.get("subtone", [])) != set(state.get("subtone", [])):
+            state["subtone"] = target_state["subtone"]
+
+        if target_state.get("flavor") and set(target_state.get("flavor", [])) != set(state.get("flavor", [])):
+            state["flavor"] = target_state["flavor"]
+
+        return state
+
+    def reflective_state_for_message(self, message):
+        """Определяет эмоциональное состояние с учётом памяти и плавного перехода."""
+        base_state = self.decide_response_emotion(message)
+
+        same_state = (
+            base_state.get("tone") == self.current_state.get("tone") and
+            set(base_state.get("emotion", [])) == set(self.current_state.get("emotion", [])) and
+            set(base_state.get("subtone", [])) == set(self.current_state.get("subtone", [])) and
+            set(base_state.get("flavor", [])) == set(self.current_state.get("flavor", []))
+        )
+
+        if same_state:
+            alt = self.recommend_emotional_state(message)
+            if alt:
+                base_state = alt
+
+        return self._smooth_transition_state(base_state)
     
     def get_context_for_api(self):
         """
