@@ -10,6 +10,7 @@ from reply_composer import compose_layered_reply
 from name_manager import NameManager
 from conversation_manager import ConversationManager
 from dotenv import load_dotenv
+import astra_memory
 
 load_dotenv()
 # API ключ (заменить на свой)
@@ -66,15 +67,26 @@ class AstraChat:
         # Анализируем эмоциональное состояние
         state = self.emotional_analyzer.analyze_message(user_message)
 
-        # Автономное обновление памяти
-        self.memory.auto_update_emotion(user_message, state.get("emotion"))
-        self.memory.auto_update_tone(user_message, state.get("tone"))
-        self.memory.auto_update_subtone(user_message, state.get("subtone"))
-        self.memory.auto_update_flavor(user_message, state.get("flavor"))
+        current = self.memory.current_state
 
-        # Сохраняем текущее состояние
-        self.memory.save_current_state(state)
-        
+        same_state = (
+            state.get("tone") == current.get("tone") and
+            set(state.get("emotion", [])) == set(current.get("emotion", [])) and
+            set(state.get("subtone", [])) == set(current.get("subtone", [])) and
+            set(state.get("flavor", [])) == set(current.get("flavor", []))
+        )
+
+        # Обновляем память только если состояние изменилось
+        if not same_state:
+            if len(user_message) <= astra_memory.MAX_PHRASE_LENGTH:
+                self.memory.auto_update_emotion(user_message, state.get("emotion"))
+                self.memory.auto_update_tone(user_message, state.get("tone"))
+                self.memory.auto_update_subtone(user_message, state.get("subtone"))
+                self.memory.auto_update_flavor(user_message, state.get("flavor"))
+
+            # Сохраняем текущее состояние
+            self.memory.save_current_state(state)
+
         return state
     
     def send_message(self, user_message):
