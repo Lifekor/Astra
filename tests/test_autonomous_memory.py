@@ -77,3 +77,21 @@ def test_normalization_deduplication():
         data = load_emotions(mem)
         assert len(data) == 1
         assert data[0]["trigger"] == "привет"
+
+
+def test_semantic_deduplication_same_emotion():
+    with TemporaryDirectory() as tmp:
+        mem = setup_memory(tmp)
+        mem.add_emotion_to_phrase("Привет, мой друг!", "радость")
+        mem.add_emotion_to_phrase("привет мой дорогой друг", "радость")
+        data = load_emotions(mem)
+        assert len(data) == 1
+
+
+def test_semantic_allows_new_emotion():
+    with TemporaryDirectory() as tmp:
+        mem = setup_memory(tmp)
+        mem.add_emotion_to_phrase("как дела", "радость")
+        mem.add_emotion_to_phrase("как ты поживаешь", "грусть")
+        data = load_emotions(mem)
+        assert len(data) == 2
