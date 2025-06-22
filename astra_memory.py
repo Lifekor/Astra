@@ -19,6 +19,7 @@ SUBTONE_MEMORY_FILE = "subtone_memory.json"
 FLAVOR_MEMORY_FILE = "flavor_memory.json"
 STATE_MEMORY_FILE = "state_memory.json"
 TRIGGER_PHRASE_FILE = "trigger_phrase_memory.json"
+TRANSITION_TRIGGER_FILE = "transition_trigger_phrases.json"
 MEMORY_LOG_FILE = "astra_memory_log.jsonl"
 SELF_NOTES_FILE = "astra_self_notes.json"
 CURRENT_STATE_FILE = "current_state.json"
@@ -52,6 +53,7 @@ class AstraMemory:
         self.flavor_memory = []
         self.state_memory = []
         self.trigger_phrases = []
+        self.transition_triggers = []
         self.self_notes = []
         self.name_memory = {}
         self.relationship_memory = {}
@@ -102,6 +104,7 @@ class AstraMemory:
         self.flavor_memory = self.load_json_file(FLAVOR_MEMORY_FILE, default=[])
         self.state_memory = self.load_json_file(STATE_MEMORY_FILE, default=[])
         self.trigger_phrases = self.load_json_file(TRIGGER_PHRASE_FILE, default=[])
+        self.transition_triggers = self.load_json_file(TRANSITION_TRIGGER_FILE, default=[])
         self.self_notes = self.load_json_file(SELF_NOTES_FILE, default=[])
         self.name_memory = self.load_json_file(NAME_MEMORY_FILE, default={})
         
@@ -591,6 +594,17 @@ class AstraMemory:
         if subtone and "examples" in subtone:
             return subtone["examples"]
         return []
+
+    def get_transition_expressions(self, text):
+        """Возвращает динамические выражения для фраз, найденных в тексте"""
+        lowered = text.lower()
+        results = []
+        for item in self.transition_triggers:
+            trig = item.get("trigger", "").lower()
+            expr = item.get("expression")
+            if trig and expr and trig in lowered:
+                results.append((trig, expr))
+        return results
     
     def save_json_file(self, filename, data):
         """Сохраняет данные в JSON файл"""
