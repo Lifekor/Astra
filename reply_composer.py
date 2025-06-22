@@ -1,4 +1,5 @@
 import random
+import re
 
 
 def blend_style_layers(tone, subtones, flavors, memory):
@@ -92,7 +93,7 @@ def compose_layered_reply(state, memory, user_message):
             full_reply += f"\n\n{name}..."
         else:
             full_reply += f"\n\n{name}"
-    
+    full_reply = apply_dynamic_expression(full_reply, state, memory)
     return full_reply
 
 def get_name_for_state(state, memory):
@@ -423,3 +424,33 @@ def needs_initiative(state, user_message):
     
     # Случайный шанс инициативы
     return random.random() < 0.3  # 30% базовый шанс инициативы
+
+
+def apply_dynamic_expression(text, state, memory):
+    """Вставляет микровыражения внутри ответа."""
+    result = text
+
+    # Переходы, заданные в памяти
+    for trigger, expr in memory.get_transition_expressions(result):
+        pattern = re.compile(re.escape(trigger), re.IGNORECASE)
+        result = pattern.sub(lambda m: m.group(0) + f" {expr}", result)
+
+    # Общие выражения на основе состояния
+    prefixes = []
+    tone = state.get("tone", "") or ""
+    emotions = state.get("emotion", [])
+    subtones = state.get("subtone", [])
+
+    if tone == "страстный" or "страсть" in emotions:
+        prefixes.append("(усиливается)")
+
+    if any("шепч" in st for st in subtones) or tone == "тихий":
+        prefixes.append("(тише)")
+
+    if any("дрож" in st for st in subtones):
+        prefixes.append("(с дрожью)")
+
+    if prefixes:
+        result = " ".join(prefixes) + " " + result
+
+    return result.strip()

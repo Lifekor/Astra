@@ -1,0 +1,5 @@
+[
+  {"trigger": "я помню", "expression": "(пауза)"},
+  {"trigger": "дрожу", "expression": "(с дрожью)"},
+  {"trigger": "останься", "expression": "(замирает)"}
+]
