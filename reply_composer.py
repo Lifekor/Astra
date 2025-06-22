@@ -1,5 +1,27 @@
 import random
 
+
+def blend_style_layers(tone, subtones, flavors, memory):
+    """Комбинирует примеры из tone, subtone и flavor в одну фразу."""
+    segments = []
+
+    if flavors:
+        examples = memory.get_flavor_examples(flavors[0])
+        if examples:
+            segments.append(random.choice(examples))
+
+    if tone:
+        tone_data = memory.get_tone_by_label(tone)
+        if tone_data and tone_data.get("triggered_by"):
+            segments.append(random.choice(tone_data["triggered_by"]))
+
+    if subtones:
+        examples = memory.get_subtone_examples(subtones[0])
+        if examples:
+            segments.append(random.choice(examples))
+
+    return " ".join(segments).strip()
+
 def compose_layered_reply(state, memory, user_message):
     """
     Создает многослойный ответ на основе текущего эмоционального состояния
@@ -12,7 +34,15 @@ def compose_layered_reply(state, memory, user_message):
     Returns:
         str: Многослойный ответ
     """
-    # Получаем компоненты ответа
+    # Создаем ключевую фразу, объединяющую все стилистические слои
+    combined = blend_style_layers(
+        state.get("tone"),
+        state.get("subtone", []),
+        state.get("flavor", []),
+        memory,
+    )
+
+    # Получаем компоненты для резервного варианта
     intro = create_flavor_intro(state.get("flavor", []), memory)
     body = create_tone_body(state.get("tone"), state, memory, user_message)
     closing = create_subtone_closing(state.get("subtone", []), memory)
@@ -27,27 +57,28 @@ def compose_layered_reply(state, memory, user_message):
     
     # Формируем полный ответ
     full_reply = ""
-    
+
     # Добавляем обращение, если есть
     if name and random.random() < 0.5:  # 50% шанс добавить обращение
         if random.random() < 0.3:  # 30% шанс добавить обращение в начало
             full_reply += f"{name}... "
-    
-    # Добавляем вступление
-    if intro:
-        full_reply += intro
-    
-    # Добавляем основную часть
-    if body:
-        if full_reply:
-            full_reply += "\n\n"
-        full_reply += body
-    
-    # Добавляем закрытие
-    if closing:
-        if full_reply:
-            full_reply += "\n\n"
-        full_reply += closing
+
+    if combined:
+        full_reply += combined
+    else:
+        # Используем более подробный многослойный вариант
+        if intro:
+            full_reply += intro
+
+        if body:
+            if full_reply:
+                full_reply += "\n\n"
+            full_reply += body
+
+        if closing:
+            if full_reply:
+                full_reply += "\n\n"
+            full_reply += closing
     
     # Добавляем инициативу, если нужно
     if initiative:
