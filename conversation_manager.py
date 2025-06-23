@@ -23,9 +23,12 @@ class ConversationManager:
         self.memory = memory
         self.full_conversation_history = []  # Полная история диалога в RAM
         self.api_context_history = []  # История для отправки в API
+        self.summary_history = []  # Сохраненные сводки
+        self.latest_summary = None
         
-        # Загружаем сохраненную историю, если есть
+        # Загружаем сохраненную историю и сводки, если есть
         self.load_history_from_disk()
+        self.load_summaries_from_disk()
     
     def add_message(self, role, content):
         """
@@ -53,6 +56,9 @@ class ConversationManager:
         # Ограничиваем историю для API последними сообщениями
         if len(self.api_context_history) > 20:
             self.api_context_history = self.api_context_history[-20:]
+
+        # Периодически создаем сводку для сохранения старых сообщений
+        self.summarize_history()
     
     def save_history_to_disk(self):
         """Сохраняет историю диалога на диск"""
@@ -94,6 +100,60 @@ class ConversationManager:
             
         except Exception as e:
             print(f"Ошибка при загрузке истории диалога: {e}")
+
+    def load_summaries_from_disk(self):
+        """Загружает файл сводок диалога"""
+        summaries_path = self.memory.get_file_path("conversation_summaries.jsonl")
+
+        if not os.path.exists(summaries_path):
+            print("Файл сводок диалога не найден. Создаем новый.")
+            self.summary_history = []
+            self.latest_summary = None
+            return
+
+        try:
+            self.summary_history = []
+            with open(summaries_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        self.summary_history.append(json.loads(line))
+            if self.summary_history:
+                self.latest_summary = self.summary_history[-1].get("summary")
+        except Exception as e:
+            print(f"Ошибка при загрузке сводок диалога: {e}")
+
+    def summarize_history(self, max_recent=50, summary_words=40):
+        """Сохраняет краткую сводку старых сообщений, если история слишком длинная"""
+
+        if len(self.full_conversation_history) <= max_recent:
+            return None
+
+        old_messages = self.full_conversation_history[:-max_recent]
+        text = " ".join(m["content"] for m in old_messages)
+        words = text.split()
+        snippet = " ".join(words[:summary_words])
+        if len(words) > summary_words:
+            snippet += "..."
+
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "summary": snippet
+        }
+
+        summaries_path = self.memory.get_file_path("conversation_summaries.jsonl")
+        with open(summaries_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        self.summary_history.append(record)
+        self.latest_summary = snippet
+
+        # Оставляем только последние сообщения в памяти
+        self.full_conversation_history = self.full_conversation_history[-max_recent:]
+        if len(self.api_context_history) > max_recent:
+            self.api_context_history = self.api_context_history[-max_recent:]
+
+        return snippet
     
     def get_relevant_context(self, user_message):
         """
@@ -147,6 +207,14 @@ class ConversationManager:
         
         # Объединяем все релевантные сообщения
         relevant_messages = recent_messages + keyword_matches + essential_facts
+
+        # Если были созданы сводки, добавляем последнюю как системное сообщение
+        if self.latest_summary:
+            summary_message = {
+                "role": "system",
+                "content": f"Сводка предыдущего диалога: {self.latest_summary}"
+            }
+            relevant_messages.insert(0, summary_message)
         
         # Ensure the context is not empty
         if not relevant_messages:
