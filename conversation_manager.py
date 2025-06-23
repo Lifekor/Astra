@@ -9,6 +9,13 @@
 import os
 import json
 from datetime import datetime
+from typing import List
+
+try:  # optional dependency for semantic search
+    from sentence_transformers import SentenceTransformer, util  # type: ignore
+except Exception:  # pragma: no cover - handle missing dependency gracefully
+    SentenceTransformer = None
+    util = None
 
 class ConversationManager:
     """Класс для управления историей диалога"""
@@ -21,14 +28,44 @@ class ConversationManager:
             memory (AstraMemory): Объект памяти Астры
         """
         self.memory = memory
-        self.full_conversation_history = []  # Полная история диалога в RAM
-        self.api_context_history = []  # История для отправки в API
-        self.summary_history = []  # Сохраненные сводки
+        self.full_conversation_history: List[dict] = []  # Полная история диалога в RAM
+        self.api_context_history: List[dict] = []  # История для отправки в API
+        self.summary_history: List[dict] = []  # Сохраненные сводки
         self.latest_summary = None
-        
+
+        # Semantic search components
+        self.embedding_model = None
+        self.message_embeddings: List = []
+        self._init_embedding_model()
+
         # Загружаем сохраненную историю и сводки, если есть
         self.load_history_from_disk()
         self.load_summaries_from_disk()
+
+    def _init_embedding_model(self):
+        """Initialize sentence transformer model if available"""
+        if SentenceTransformer is None:
+            print("sentence_transformers not available, semantic search disabled.")
+            return
+        try:
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        except Exception as e:  # pragma: no cover - runtime dependency issues
+            print(f"Failed to load embedding model: {e}")
+            self.embedding_model = None
+        self._rebuild_embeddings()
+
+    def _rebuild_embeddings(self):
+        """Recompute embeddings for the entire history"""
+        self.message_embeddings = []
+        if not self.embedding_model:
+            return
+        contents = [m.get("content", "") for m in self.full_conversation_history]
+        if contents:
+            try:
+                self.message_embeddings = self.embedding_model.encode(contents, convert_to_tensor=True)
+            except Exception as e:  # pragma: no cover - encoding may fail
+                print(f"Failed to encode history embeddings: {e}")
+                self.message_embeddings = []
     
     def add_message(self, role, content):
         """
@@ -46,6 +83,14 @@ class ConversationManager:
         
         # Добавляем в полную историю
         self.full_conversation_history.append(message)
+        if self.embedding_model:
+            try:
+                emb = self.embedding_model.encode(content, convert_to_tensor=True)
+                self.message_embeddings.append(emb)
+            except Exception:
+                self.message_embeddings.append(None)
+        else:
+            self.message_embeddings.append(None)
         
         # Добавляем в историю для API
         self.api_context_history.append({
@@ -97,7 +142,10 @@ class ConversationManager:
                     "role": message["role"],
                     "content": message["content"]
                 })
-            
+
+            # Пересчитываем эмбеддинги для загруженной истории
+            self._rebuild_embeddings()
+
         except Exception as e:
             print(f"Ошибка при загрузке истории диалога: {e}")
 
@@ -152,8 +200,28 @@ class ConversationManager:
         self.full_conversation_history = self.full_conversation_history[-max_recent:]
         if len(self.api_context_history) > max_recent:
             self.api_context_history = self.api_context_history[-max_recent:]
+        if self.message_embeddings:
+            self.message_embeddings = self.message_embeddings[-max_recent:]
 
         return snippet
+
+    def semantic_search(self, text, top_k: int = 5):
+        """Return top_k semantically similar messages to the query"""
+        if not self.embedding_model or not self.message_embeddings:
+            return []
+        try:
+            query_emb = self.embedding_model.encode(text, convert_to_tensor=True)
+            scores = util.cos_sim(query_emb, self.message_embeddings)[0]
+            top_k = min(top_k, len(scores))
+            indices = scores.topk(k=top_k).indices.tolist()
+            results = []
+            for idx in indices:
+                msg = self.full_conversation_history[idx]
+                results.append({"role": msg["role"], "content": msg["content"]})
+            return results
+        except Exception as e:  # pragma: no cover - runtime errors
+            print(f"Semantic search failed: {e}")
+            return []
     
     def get_relevant_context(self, user_message):
         """
@@ -172,6 +240,9 @@ class ConversationManager:
                 "role": message["role"],
                 "content": message["content"]
             })
+
+        # Semantic search based on sentence embeddings
+        semantic_matches = self.semantic_search(user_message)
         
         # Извлекаем ключевые слова из сообщения пользователя
         keywords = self.extract_keywords(user_message)
@@ -205,8 +276,14 @@ class ConversationManager:
                 if len(essential_facts) >= 5:
                     break  # Ограничиваем 5 сообщениями
         
-        # Объединяем все релевантные сообщения
-        relevant_messages = recent_messages + keyword_matches + essential_facts
+        # Объединяем все релевантные сообщения, исключая дубликаты
+        relevant_messages = []
+        seen = set()
+        for msg in recent_messages + semantic_matches + keyword_matches + essential_facts:
+            key = (msg["role"], msg["content"])
+            if key not in seen:
+                relevant_messages.append(msg)
+                seen.add(key)
 
         # Если были созданы сводки, добавляем последнюю как системное сообщение
         if self.latest_summary:
@@ -321,6 +398,7 @@ class ConversationManager:
         """Очищает историю диалога"""
         self.full_conversation_history = []
         self.api_context_history = []
+        self.message_embeddings = []
         
         # Удаляем файл истории
         history_path = self.memory.get_file_path("conversation_history.jsonl")
