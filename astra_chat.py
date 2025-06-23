@@ -11,6 +11,10 @@ from name_manager import NameManager
 from conversation_manager import ConversationManager
 from dotenv import load_dotenv
 import astra_memory
+try:
+    import tiktoken  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    tiktoken = None
 
 load_dotenv()
 # API ключ (заменить на свой)
@@ -225,22 +229,37 @@ class AstraChat:
         relevant_context = self.conversation_manager.get_relevant_context(user_message)
         
         # Формируем сообщения для API
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
-        
+        messages = [{"role": "system", "content": system_prompt}]
+
         # Добавляем релевантный контекст к сообщениям
-        print("💬 relevant_context tokens:", len(str(relevant_context)))
         messages.extend(relevant_context)
-        
+
         # Обязательно добавляем текущее сообщение пользователя в конец
         messages.append({"role": "user", "content": user_message})
+
+        # Подсчитываем количество токенов в сообщениях
+        def _count_tokens(msgs):
+            if tiktoken:
+                enc = tiktoken.encoding_for_model("gpt-4o")
+                return sum(len(enc.encode(m.get("content", ""))) for m in msgs)
+            # приближенная оценка без tiktoken
+            return sum(len(m.get("content", "")) // 4 for m in msgs)
+
+        prompt_tokens = _count_tokens(messages)
+        max_tokens = 2000
+        safe_limit = 9500
+
+        # Если запрос превышает безопасный лимит, постепенно удаляем ранние сообщения контекста
+        while prompt_tokens + max_tokens > safe_limit and relevant_context:
+            relevant_context.pop(0)
+            messages = [{"role": "system", "content": system_prompt}] + relevant_context + [{"role": "user", "content": user_message}]
+            prompt_tokens = _count_tokens(messages)
         
         # Формируем тело запроса
         data = {
             "model": "gpt-4o",  # Используем gpt-4o для максимальной эффективности
             "messages": messages,
-            "max_tokens": 2000,
+            "max_tokens": max_tokens,
             "temperature": 0.85,  # Регулируем "живость" и креативность ответов
             "top_p": 1.0,
             "frequency_penalty": 0.2,  # Регулируем разнообразие ответов

@@ -22,3 +22,6 @@ enabled in `AstraMemory`.
 
 ## Maintenance
 Run `scripts/cleanup_duplicates.py` to merge duplicate emotion records after updates.
+
+## Token handling
+`AstraChat.generate_response` uses `tiktoken` to approximate how many tokens will be sent to the API. If the existing context plus the `max_tokens` setting would exceed about 9500 tokens, the oldest messages in the relevant context are dropped until the request fits this limit. This prevents hitting the GPT-4o hard cap while still returning up to 2000 new tokens.
