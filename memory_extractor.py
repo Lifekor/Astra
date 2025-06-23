@@ -3,8 +3,8 @@
 """
 import os
 import glob
-import json
 from intent_analyzer import IntentAnalyzer
+from astra_mcp_memory import AstraMCPMemory
 
 try:
     import tiktoken  # type: ignore
@@ -32,7 +32,9 @@ class MemoryExtractor:
         """
         self.memory = memory
         self.intent_analyzer = IntentAnalyzer(api_key)
-        
+        # Semantic memory backed by FAISS (falls back if dependencies missing)
+        self.mcp_memory = AstraMCPMemory(data_dir=memory.get_file_path(""))
+
         # Кэш загруженных дневников
         self.diaries = {}
         
@@ -146,9 +148,16 @@ class MemoryExtractor:
         
         # Получаем список релевантных типов памяти
         memory_types = intent_data.get("match_memory", [])
-        
+
         # Получаем тип интента
         intent = intent_data.get("intent", "")
+
+        # Попытка семантического поиска в MCP памяти
+        mcp_results = self.mcp_memory.semantic_search(user_message, top_k=5)
+        if mcp_results:
+            memories = [{"text": r["text"], "relevance": r["score"]} for r in mcp_results]
+            sources = {r["text"]: r.get("source", "mcp") for r in mcp_results}
+            return {"intent": intent, "memories": memories, "sources": sources}
         
         # Определяем, нужна ли "глубокая" память с использованием gpt-4
         use_deep_memory = intent in ["intimate", "about_relationship", "memory_recall"] or any(
@@ -201,12 +210,6 @@ class MemoryExtractor:
             
             # Получаем фрагменты из каждого дневника
             for diary_name in diary_names:
-                # Проверяем наличие .txt расширения, если нет - добавляем
-                if not diary_name.endswith(".txt"):
-                    diary_file = diary_name + ".txt"
-                else:
-                    diary_file = diary_name
-                
                 # Убираем расширение для поиска в self.diaries
                 diary_key = diary_name.replace(".txt", "")
                 

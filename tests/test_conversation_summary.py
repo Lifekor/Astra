@@ -27,7 +27,7 @@ def test_history_summarization_and_context():
         path = mem.get_file_path("conversation_summaries.jsonl")
         assert os.path.exists(path)
         with open(path, "r", encoding="utf-8") as f:
-            lines = [json.loads(l) for l in f if l.strip()]
+            lines = [json.loads(line) for line in f if line.strip()]
         assert len(lines) == 1
         assert "summary" in lines[0]
         # После сводки сохраняются только последние 5 сообщений

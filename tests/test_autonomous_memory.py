@@ -2,7 +2,6 @@ import json
 import importlib
 from tempfile import TemporaryDirectory
 
-import pytest
 
 import os
 import sys
@@ -14,7 +13,7 @@ sys.modules.setdefault("requests", requests_stub)
 dotenv_stub = types.ModuleType("dotenv")
 dotenv_stub.load_dotenv = lambda *args, **kwargs: None
 sys.modules.setdefault("dotenv", dotenv_stub)
-import astra_chat
+import astra_chat  # noqa: E402
 
 
 def setup_memory(tmpdir, autonomous=True):

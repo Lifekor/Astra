@@ -6,16 +6,14 @@ import types
 import sys
 from tempfile import TemporaryDirectory
 
-import pytest
 
 # Stub requests before importing modules that require it
 requests_stub = types.SimpleNamespace(post=None, exceptions=types.SimpleNamespace(RequestException=Exception))
 sys.modules["requests"] = requests_stub
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import astra_memory
-from memory_extractor import MemoryExtractor
-from intent_analyzer import IntentAnalyzer
+import astra_memory  # noqa: E402
+from memory_extractor import MemoryExtractor  # noqa: E402
 
 
 def setup_memory(tmpdir):
