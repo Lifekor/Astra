@@ -6,6 +6,19 @@ import glob
 import json
 from intent_analyzer import IntentAnalyzer
 
+try:
+    import tiktoken  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    tiktoken = None
+
+
+def _count_tokens(text: str) -> int:
+    """Approximate token count for a text fragment."""
+    if tiktoken:
+        enc = tiktoken.encoding_for_model("gpt-4o")
+        return len(enc.encode(text))
+    return len(text) // 4
+
 class MemoryExtractor:
     """Класс для извлечения релевантных воспоминаний"""
     
@@ -105,7 +118,14 @@ class MemoryExtractor:
         
         return fragments
     
-    def extract_relevant_memories(self, user_message, intent_data=None, conversation_context=None, model=None):
+    def extract_relevant_memories(
+        self,
+        user_message,
+        intent_data=None,
+        conversation_context=None,
+        model=None,
+        memory_token_limit=3000,
+    ):
         """
         Извлекает релевантные воспоминания на основе намерения пользователя
         
@@ -114,6 +134,8 @@ class MemoryExtractor:
             intent_data (dict, optional): Данные о намерении пользователя
             conversation_context (list, optional): Контекст диалога
             model (str, optional): Модель для поиска воспоминаний (по умолчанию выбирается автоматически)
+            memory_token_limit (int, optional): Максимальное число токенов дневниковых фрагментов
+                для анализа релевантности
             
         Returns:
             dict: Структура с релевантными воспоминаниями
@@ -159,6 +181,7 @@ class MemoryExtractor:
         # Собираем фрагменты из всех релевантных типов памяти
         all_fragments = []
         fragments_sources = {}
+        used_tokens = 0
         
         for memory_type in memory_types:
             # Преобразуем название типа памяти в имя файла
@@ -187,12 +210,21 @@ class MemoryExtractor:
                 # Убираем расширение для поиска в self.diaries
                 diary_key = diary_name.replace(".txt", "")
                 
-                if diary_key in self.diaries:
+                if diary_key in self.diaries and used_tokens < memory_token_limit:
                     fragments = self.get_memory_fragments(diary_key)
-                    
+
                     for fragment in fragments:
+                        tokens = _count_tokens(fragment)
+                        if used_tokens + tokens > memory_token_limit:
+                            break
                         all_fragments.append(fragment)
                         fragments_sources[fragment] = diary_name
+                        used_tokens += tokens
+                    if used_tokens >= memory_token_limit:
+                        break
+            if used_tokens >= memory_token_limit:
+                break
+        # Если превысили лимит токенов, прекращаем добавление
         
         # Если у нас нет фрагментов, возвращаем пустой результат
         if not all_fragments:
