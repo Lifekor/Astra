@@ -74,14 +74,10 @@ class DualModelIntegrator:
         # Логирование анализа стиля
         self.log_step("2. Style Analysis", style_data)
         
-        # Определяем, нужны ли глубокие воспоминания
-        intent = intent_data.get("intent", "")
-        memory_model = "gpt-3.5-turbo"
-        self.log_step("Memory Model", memory_model)
-        
-        # Шаг 3: Извлекаем релевантные воспоминания с выбранной моделью
+        # Используем только gpt-3.5-turbo для всех операций
+        # Шаг 3: Извлекаем релевантные воспоминания
         memories_data = self.memory_extractor.extract_relevant_memories(
-            user_message, intent_data, conversation_context, model=memory_model
+            user_message, intent_data, conversation_context, model="gpt-3.5-turbo"
         )
         self.last_memories_data = memories_data
         
