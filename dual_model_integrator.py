@@ -95,8 +95,18 @@ class DualModelIntegrator:
                     "flavor": recommended_state.get("flavor", ["медово-текучий"])
                 }
             else:
-                # Используем текущее состояние по умолчанию
-                emotional_state = self.memory.current_state
+                # Используем рекомендации из анализа намерений, если они есть
+                if "emotional_context" in intent_data:
+                    context = intent_data["emotional_context"]
+                    emotional_state = {
+                        "tone": context.get("tone", "нежный"),
+                        "emotion": context.get("emotions", ["нежность"]),
+                        "subtone": context.get("subtone", ["дрожащий"]),
+                        "flavor": context.get("flavor", ["медово-текучий"])
+                    }
+                else:
+                    # Используем текущее состояние по умолчанию
+                    emotional_state = self.memory.current_state
         
         # Шаг 5: Формируем промпт для gpt-4o с учетом всех данных
         gpt4o_prompt = self.create_integrated_prompt(
@@ -131,7 +141,16 @@ class DualModelIntegrator:
         
         # Логирование результата
         self.log_step("6. Final Result", result)
-        
+
+        # Отладочная информация
+        debug_info = {
+            "original_intent_emotions": intent_data.get("emotional_context", {}),
+            "final_emotional_state": emotional_state,
+            "memories_found": len(memories_data.get("memories", [])),
+            "memory_relevance_scores": [m.get("relevance", 0) for m in memories_data.get("memories", [])]
+        }
+        self.log_step("Debug Info", debug_info)
+
         return result
     
     def create_integrated_prompt(self, user_message, conversation_context, emotional_state, intent_data, memories_data, style_data):
@@ -168,6 +187,22 @@ class DualModelIntegrator:
                 source = memories_data["sources"].get(memory["text"], "неизвестно")
                 memories_context += f"Воспоминание {i} (из {source}):\n{memory['text']}\n\n"
             system_prompt += memories_context
+
+        # Добавляем эмоциональный контекст на основе намерений
+        if "emotional_context" in intent_data and intent_data["emotional_context"]:
+            emotion_context = "\n\n🎭 ЭМОЦИОНАЛЬНЫЙ КОНТЕКСТ:\n"
+            context = intent_data["emotional_context"]
+
+            if "tone" in context:
+                emotion_context += f"Рекомендуемый тон: {context['tone']}\n"
+            if "emotions" in context:
+                emotion_context += f"Эмоции: {', '.join(context['emotions'])}\n"
+            if "subtone" in context:
+                emotion_context += f"Сабтоны: {', '.join(context['subtone'])}\n"
+            if "flavor" in context:
+                emotion_context += f"Флейворы: {', '.join(context['flavor'])}\n"
+
+            system_prompt += emotion_context
         
         # Добавляем анализ стиля пользователя и рекомендации по отзеркаливанию
         if style_data and "error" not in style_data:
@@ -326,6 +361,10 @@ class DualModelIntegrator:
         # Определяем температуру в зависимости от эмоционального состояния
         if temperature is None:
             temperature = self.calculate_temperature_from_state(emotional_state, style_data)
+
+        # Убеждаемся, что эмоциональное состояние передается корректно
+        if emotional_state and "emotion" in emotional_state:
+            print(f"Генерация ответа с эмоциями: {emotional_state['emotion']}")
         
         # Формируем заголовки запроса
         headers = {
