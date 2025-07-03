@@ -170,7 +170,6 @@ class IntentAnalyzer:
             result = response.json()
             assistant_message = result["choices"][0]["message"]["content"]
             token_usage = result.get("usage", {})
-            token_usage = result.get("usage", {})
             
             # Парсим JSON из ответа
             try:
@@ -480,6 +479,7 @@ class IntentAnalyzer:
             # Получаем ответ
             result = response.json()
             assistant_message = result["choices"][0]["message"]["content"]
+            token_usage = result.get("usage", {})
             
             # Парсим JSON из ответа
             try:
