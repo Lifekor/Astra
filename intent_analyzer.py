@@ -169,6 +169,8 @@ class IntentAnalyzer:
             # Получаем ответ
             result = response.json()
             assistant_message = result["choices"][0]["message"]["content"]
+            token_usage = result.get("usage", {})
+            token_usage = result.get("usage", {})
             
             # Парсим JSON из ответа
             try:
@@ -177,13 +179,15 @@ class IntentAnalyzer:
                 if json_match:
                     json_str = json_match.group(1)
                     intent_data = json.loads(json_str)
+                    if token_usage:
+                        intent_data["_token_usage"] = token_usage
                     return intent_data
                 else:
                     print(f"Не удалось извлечь JSON из ответа: {assistant_message}")
-                    return {"intent": "parse_error", "confidence": 0, "error": "Не удалось извлечь JSON"}
+                    return {"intent": "parse_error", "confidence": 0, "error": "Не удалось извлечь JSON", "_token_usage": token_usage}
             except json.JSONDecodeError as e:
                 print(f"Ошибка парсинга JSON: {e}\nОтвет: {assistant_message}")
-                return {"intent": "parse_error", "confidence": 0, "error": "Не удалось разобрать JSON"}
+                return {"intent": "parse_error", "confidence": 0, "error": "Не удалось разобрать JSON", "_token_usage": token_usage}
             
         except requests.exceptions.RequestException as e:
             print(f"Ошибка запроса: {e}")
@@ -270,6 +274,7 @@ class IntentAnalyzer:
         }
 
         all_relevance = []
+        total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         for offset, batch_fragments in batches:
             messages = [
@@ -304,6 +309,9 @@ class IntentAnalyzer:
 
                 result = response.json()
                 assistant_message = result["choices"][0]["message"]["content"]
+                usage = result.get("usage", {})
+                for key in total_usage:
+                    total_usage[key] += usage.get(key, 0)
 
                 try:
                     json_match = re.search(r'(\[[\s\S]*\])', assistant_message)
@@ -371,7 +379,7 @@ class IntentAnalyzer:
                 entry["index"] = index
             selected.append(entry)
 
-        return selected
+        return {"fragments": selected, "_token_usage": total_usage}
 
     def analyze_user_style(self, user_message, previous_messages=None, model="gpt-3.5-turbo"):
         """
@@ -480,14 +488,16 @@ class IntentAnalyzer:
                 if json_match:
                     json_str = json_match.group(1)
                     style_data = json.loads(json_str)
+                    if token_usage:
+                        style_data["_token_usage"] = token_usage
                     return style_data
                 else:
                     print(f"Не удалось извлечь JSON из ответа: {assistant_message}")
-                    return {"error": "Не удалось извлечь JSON из ответа"}
+                    return {"error": "Не удалось извлечь JSON из ответа", "_token_usage": token_usage}
             
             except json.JSONDecodeError as e:
                 print(f"Ошибка парсинга JSON: {e}\nОтвет: {assistant_message}")
-                return {"error": f"Ошибка парсинга JSON: {e}"}
+                return {"error": f"Ошибка парсинга JSON: {e}", "_token_usage": token_usage}
             
         except requests.exceptions.RequestException as e:
             print(f"Ошибка запроса: {e}")

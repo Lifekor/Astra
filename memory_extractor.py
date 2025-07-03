@@ -3,6 +3,8 @@
 """
 import os
 import glob
+import json
+from datetime import datetime
 from intent_analyzer import IntentAnalyzer
 from astra_mcp_memory import AstraMCPMemory
 
@@ -35,11 +37,30 @@ class MemoryExtractor:
         # Semantic memory backed by FAISS (falls back if dependencies missing)
         self.mcp_memory = AstraMCPMemory(data_dir=memory.get_file_path(""))
 
+        # Debug log for tracing memory search steps
+        self.debug_log_file = os.path.join(
+            memory.get_file_path(""), "memory_search.log"
+        )
+
         # Кэш загруженных дневников
         self.diaries = {}
         
         # Загружаем дневники при инициализации
         self.load_diaries()
+
+    def _log_debug(self, step_name: str, data) -> None:
+        """Append debug information to the memory search log."""
+        try:
+            entry = f"[{datetime.now().isoformat()}] {step_name}\n"
+            if isinstance(data, (dict, list)):
+                entry += json.dumps(data, ensure_ascii=False, indent=2)
+            else:
+                entry += str(data)
+            entry += "\n" + "-" * 80 + "\n"
+            with open(self.debug_log_file, "a", encoding="utf-8") as f:
+                f.write(entry)
+        except Exception:
+            pass
     
     def load_diaries(self):
         """Загружает все дневники из директории данных"""
@@ -144,7 +165,10 @@ class MemoryExtractor:
         """
         # Если данные о намерении не переданы, получаем их
         if intent_data is None:
-            intent_data = self.intent_analyzer.analyze_intent(user_message, conversation_context)
+            intent_data = self.intent_analyzer.analyze_intent(
+                user_message, conversation_context
+            )
+            self._log_debug("intent_analysis", intent_data)
         
         # Получаем список релевантных типов памяти
         memory_types = intent_data.get("match_memory", [])
@@ -159,16 +183,18 @@ class MemoryExtractor:
             sources = {r["text"]: r.get("source", "mcp") for r in mcp_results}
             return {"intent": intent, "memories": memories, "sources": sources}
         
-        # Определяем, нужна ли "глубокая" память с использованием gpt-4
-        use_deep_memory = intent in ["intimate", "about_relationship", "memory_recall"] or any(
-            mem_type in ["astra_intimacy", "astra_memories"] for mem_type in memory_types
+        # Модель для релевантности памяти по умолчанию gpt-3.5-turbo
+        model_to_use = model or "gpt-3.5-turbo"
+
+        self._log_debug(
+            "memory_search_start",
+            {
+                "user_message": user_message,
+                "memory_types": memory_types,
+                "model": model_to_use,
+                "token_limit": memory_token_limit,
+            },
         )
-        
-        # Выбираем модель в зависимости от типа воспоминаний, если не задана явно
-        if model is None:
-            model_to_use = "gpt-4" if use_deep_memory else "gpt-3.5-turbo"
-        else:
-            model_to_use = model
         
         # Если список пустой, используем базовые типы в зависимости от намерения
         if not memory_types:
@@ -228,6 +254,15 @@ class MemoryExtractor:
             if used_tokens >= memory_token_limit:
                 break
         # Если превысили лимит токенов, прекращаем добавление
+
+        self._log_debug(
+            "fragments_collected",
+            {
+                "count": len(all_fragments),
+                "used_tokens": used_tokens,
+                "sources": list({v for v in fragments_sources.values()}),
+            },
+        )
         
         # Если у нас нет фрагментов, возвращаем пустой результат
         if not all_fragments:
@@ -238,7 +273,7 @@ class MemoryExtractor:
             }
         
         # Определяем релевантность фрагментов используя выбранную модель
-        relevant_fragments = self.intent_analyzer.get_semantic_relevance(
+        relevance_data = self.intent_analyzer.get_semantic_relevance(
             user_message,
             all_fragments,
             model=model_to_use,
@@ -246,18 +281,25 @@ class MemoryExtractor:
             strategy="compact_relevance",
             memory_token_limit=800,
         )
+        relevant_fragments = relevance_data.get("fragments", [])
+        self._log_debug("relevance_result", relevance_data)
         
         # Формируем результат
         result = {
             "intent": intent_data.get("intent", "unknown"),
             "memories": relevant_fragments,
-            "sources": {}
+            "sources": {},
         }
+
+        if "_token_usage" in relevance_data:
+            result["_token_usage"] = relevance_data["_token_usage"]
         
         # Добавляем источник для каждого фрагмента
         for fragment in relevant_fragments:
             text = fragment["text"]
             if text in fragments_sources:
                 result["sources"][text] = fragments_sources[text]
-        
+
+        self._log_debug("memory_search_result", result)
+
         return result
