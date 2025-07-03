@@ -62,7 +62,10 @@ class ConversationManager:
         contents = [m.get("content", "") for m in self.full_conversation_history]
         if contents:
             try:
-                self.message_embeddings = self.embedding_model.encode(contents, convert_to_tensor=True)
+                embeddings = self.embedding_model.encode(contents, convert_to_tensor=True)
+                # `encode` returns a single tensor for the batch; convert to a list
+                # of tensors so new embeddings can be appended without errors.
+                self.message_embeddings = [emb for emb in embeddings]
             except Exception as e:  # pragma: no cover - encoding may fail
                 print(f"Failed to encode history embeddings: {e}")
                 self.message_embeddings = []
