@@ -76,8 +76,8 @@ class DualModelIntegrator:
         
         # Определяем, нужны ли глубокие воспоминания
         intent = intent_data.get("intent", "")
-        deep_memory_needed = intent in ["intimate", "about_relationship", "memory_recall"]
-        memory_model = "gpt-4" if deep_memory_needed else "gpt-3.5-turbo"
+        memory_model = "gpt-3.5-turbo"
+        self.log_step("Memory Model", memory_model)
         
         # Шаг 3: Извлекаем релевантные воспоминания с выбранной моделью
         memories_data = self.memory_extractor.extract_relevant_memories(
