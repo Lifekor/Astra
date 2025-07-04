@@ -207,16 +207,22 @@ class DualModelIntegrator:
             print(f"📊 Статистика векторной памяти: {self.mcp_memory.get_stats()}")
 
             # Определяем количество результатов в зависимости от намерения
-            top_k = 5 if intent_data.get("intent") == "memory_recall" else 3
+            # Уменьшаем количество, чтобы не получать слишком много текста
+            top_k = 3 if intent_data.get("intent") == "memory_recall" else 2
 
             print(f"🔍 Выполняем семантический поиск, top_k={top_k}")
 
             # Выполняем семантический поиск
             search_results = self.mcp_memory.semantic_search(
-                query=user_message, top_k=top_k, min_score=0.3
+                query=user_message,
+                top_k=top_k,
+                min_score=0.4,
             )
 
-            print(f"🎯 Найдено результатов: {len(search_results)}")
+            # Фильтруем только самые релевантные результаты
+            search_results = [r for r in search_results if r.get("score", 0) > 0.45]
+
+            print(f"🎯 Найдено результатов: {len(search_results)} (после фильтрации)")
 
             # Логируем результаты
             self.log_step(
@@ -230,13 +236,31 @@ class DualModelIntegrator:
 
             memories = []
             sources = {}
+            total_tokens = 0
+            max_tokens_per_memory = 500
+            max_total_tokens = 3000
 
             for result in search_results:
                 memory_text = result.get("text", "")
                 score = result.get("score", 0)
                 source = result.get("source", "vector_store")
 
-                print(f"  📝 Память: score={score:.3f}, source={source}")
+                # Ограничиваем размер текста воспоминания
+                if len(memory_text) > max_tokens_per_memory * 4:
+                    memory_text = memory_text[: max_tokens_per_memory * 4] + "..."
+
+                estimated_tokens = len(memory_text) // 4
+                if total_tokens + estimated_tokens > max_total_tokens:
+                    print(
+                        f"⚠️ Достигнут лимит токенов, пропускаем остальные воспоминания"
+                    )
+                    break
+
+                total_tokens += estimated_tokens
+
+                print(
+                    f"  📝 Память: score={score:.3f}, source={source}, tokens≈{estimated_tokens}"
+                )
                 print(f"     Текст: {memory_text[:100]}...")
 
                 memories.append(
@@ -249,6 +273,8 @@ class DualModelIntegrator:
                 )
 
                 sources[memory_text] = source
+
+            print(f"📊 Общий размер воспоминаний: ≈{total_tokens} токенов")
 
             result_data = {
                 "intent": intent_data.get("intent", "unknown"),
@@ -312,11 +338,21 @@ class DualModelIntegrator:
                 f"\n\n🧠 РЕЛЕВАНТНЫЕ ВОСПОМИНАНИЯ (поиск: {search_method}):\n\n"
             )
 
-            for i, memory in enumerate(memories_data["memories"], 1):
+            max_memories_in_prompt = 3
+            memories = memories_data["memories"][:max_memories_in_prompt]
+
+            for i, memory in enumerate(memories, 1):
                 source = memories_data["sources"].get(memory["text"], "vector_store")
                 relevance = memory.get("relevance", 0)
-                memories_context += f"Воспоминание {i} (релевантность: {relevance:.3f}, источник: {source}):\n"
-                memories_context += f"{memory['text']}\n\n"
+
+                memory_text = memory["text"]
+                if len(memory_text) > 1000:
+                    memory_text = memory_text[:1000] + "..."
+
+                memories_context += (
+                    f"Воспоминание {i} (релевантность: {relevance:.3f}):\n"
+                )
+                memories_context += f"{memory_text}\n\n"
 
             system_prompt += memories_context
 
@@ -473,6 +509,17 @@ class DualModelIntegrator:
                 instructions += f"   - {key}: {value}\n"
 
         system_prompt += instructions
+
+        # Подсчитываем приблизительное количество токенов
+        estimated_tokens = len(system_prompt) // 4
+        print(f"📊 Приблизительный размер промпта: {estimated_tokens} токенов")
+
+        if estimated_tokens > 25000:
+            print(f"⚠️ Промпт слишком большой! Сокращаем...")
+            system_prompt = (
+                system_prompt[: 25000 * 4]
+                + "\n\n[Промпт сокращён для соблюдения лимитов API]"
+            )
 
         return system_prompt
 
