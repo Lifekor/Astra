@@ -19,6 +19,7 @@ try:
     from intent_analyzer import IntentAnalyzer
     from memory_extractor import MemoryExtractor
     from dual_model_integrator import DualModelIntegrator
+    from astra_mcp_memory import AstraMCPMemory
 except ImportError as e:
     print(f"Ошибка импорта модулей: {e}")
     print("Убедитесь, что все модули находятся в одной директории")
@@ -47,7 +48,11 @@ class AstraInterface:
         
         print("Инициализация чата...")
         self.chat = AstraChat(self.memory)
-        
+
+        print("Инициализация векторной памяти...")
+        self.mcp_memory = AstraMCPMemory()
+        print(f"Векторная память готова: {self.mcp_memory.get_stats()}")
+
         print("Инициализация интегратора моделей...")
         self.dual_model_integrator = DualModelIntegrator(
             self.memory,
