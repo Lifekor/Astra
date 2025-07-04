@@ -38,9 +38,7 @@ class MemoryExtractor:
         self.mcp_memory = AstraMCPMemory(data_dir=memory.get_file_path(""))
 
         # Debug log for tracing memory search steps
-        self.debug_log_file = os.path.join(
-            memory.get_file_path(""), "memory_search.log"
-        )
+        self.debug_log_file = os.path.join("astra_data", "memory_debug.log")
 
         # Кэш загруженных дневников
         self.diaries = {}
@@ -48,19 +46,23 @@ class MemoryExtractor:
         # Загружаем дневники при инициализации
         self.load_diaries()
 
-    def _log_debug(self, step_name: str, data) -> None:
-        """Append debug information to the memory search log."""
+    def log_debug_step(self, step_name: str, data) -> None:
+        """Логирование отладочной информации"""
         try:
+            if not hasattr(self, 'debug_log_file'):
+                self.debug_log_file = os.path.join("astra_data", "memory_debug.log")
+
             entry = f"[{datetime.now().isoformat()}] {step_name}\n"
             if isinstance(data, (dict, list)):
                 entry += json.dumps(data, ensure_ascii=False, indent=2)
             else:
                 entry += str(data)
             entry += "\n" + "-" * 80 + "\n"
+
             with open(self.debug_log_file, "a", encoding="utf-8") as f:
                 f.write(entry)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Ошибка логирования: {e}")
     
     def load_diaries(self):
         """Загружает все дневники из директории данных"""
@@ -82,64 +84,115 @@ class MemoryExtractor:
             except Exception as e:
                 print(f"Ошибка при загрузке дневника {diary_name}: {e}")
     
-    def get_memory_fragments(self, diary_name, chunk_size=300, overlap=50):
+    def get_memory_fragments(self, diary_name, chunk_size=500, overlap=100):
         """
-        Разбивает дневник на фрагменты для анализа
-        
+        Разбивает дневник на смысловые фрагменты для анализа
+
         Args:
             diary_name (str): Имя дневника
             chunk_size (int): Размер фрагмента в символах
             overlap (int): Размер перекрытия фрагментов
-            
+
         Returns:
             list: Список фрагментов дневника
         """
         if diary_name not in self.diaries:
             return []
-        
+
         diary_content = self.diaries[diary_name]
-        
-        # Разбиваем дневник на отдельные абзацы
-        paragraphs = diary_content.split('\n\n')
+
+        # Разбиваем по смысловым блокам
+        # 1. Сначала по двойным переносам (абзацы)
+        paragraphs = [p.strip() for p in diary_content.split('\n\n') if p.strip()]
+
         fragments = []
-        
-        # Формируем фрагменты
         current_fragment = ""
-        
+
         for paragraph in paragraphs:
-            paragraph = paragraph.strip()
-            if not paragraph:
-                continue
-            
-            # Если добавление абзаца превышает chunk_size, сохраняем текущий фрагмент
-            if len(current_fragment) + len(paragraph) > chunk_size and current_fragment:
-                fragments.append(current_fragment)
-                
-                # Для перекрытия берем последнюю часть текущего фрагмента
-                words = current_fragment.split()
-                if len(words) > 10:  # Если есть достаточно слов для перекрытия
-                    # Берем примерно последние overlap символов (по словам)
-                    overlap_text = ""
-                    for word in reversed(words):
-                        if len(overlap_text) + len(word) + 1 > overlap:
-                            break
-                        overlap_text = word + " " + overlap_text
-                    
-                    current_fragment = overlap_text
-                else:
-                    current_fragment = ""
-            
-            # Добавляем абзац к текущему фрагменту
-            if current_fragment:
-                current_fragment += "\n\n" + paragraph
-            else:
+            # Проверяем, не превысит ли добавление абзаца лимит
+            if len(current_fragment) + len(paragraph) + 2 > chunk_size:
+                if current_fragment:
+                    fragments.append(current_fragment.strip())
                 current_fragment = paragraph
-        
-        # Добавляем последний фрагмент, если он не пустой
+            else:
+                if current_fragment:
+                    current_fragment += "\n\n" + paragraph
+                else:
+                    current_fragment = paragraph
+
+        # Добавляем последний фрагмент
         if current_fragment:
-            fragments.append(current_fragment)
-        
-        return fragments
+            fragments.append(current_fragment.strip())
+
+        # Если фрагменты слишком маленькие, объединяем их
+        final_fragments = []
+        i = 0
+        while i < len(fragments):
+            fragment = fragments[i]
+
+            # Пытаемся объединить с следующими фрагментами
+            while (
+                i + 1 < len(fragments)
+                and len(fragment) + len(fragments[i + 1]) + 2 < chunk_size
+            ):
+                fragment += "\n\n" + fragments[i + 1]
+                i += 1
+
+            final_fragments.append(fragment)
+            i += 1
+
+        return final_fragments
+
+    def prefilter_fragments(self, fragments, query):
+        """
+        Предварительная фильтрация фрагментов по ключевым словам
+
+        Args:
+            fragments (list): Список фрагментов
+            query (str): Поисковый запрос
+
+        Returns:
+            list: Отфильтрованные фрагменты
+        """
+        if not fragments:
+            return []
+
+        # Извлекаем ключевые слова из запроса
+        query_words = query.lower().split()
+
+        # Создаем словарь синонимов для расширения поиска
+        synonyms = {
+            'домик': ['дом', 'интерфейс', 'пространство', 'комната', 'ui', 'макет', 'figma'],
+            'создание': ['строительство', 'разработка', 'планирование', 'обсуждение', 'создавал', 'построил'],
+            'программа': ['интерфейс', 'приложение', 'система', 'дом', 'архитектура'],
+            'обсуждали': ['говорили', 'планировали', 'создавали', 'думали', 'решали']
+        }
+
+        # Расширяем ключевые слова синонимами
+        expanded_words = set(query_words)
+        for word in query_words:
+            if word in synonyms:
+                expanded_words.update(synonyms[word])
+
+        # Фильтруем фрагменты
+        filtered_fragments = []
+        for fragment in fragments:
+            fragment_lower = fragment.lower()
+
+            # Проверяем наличие ключевых слов
+            matches = sum(1 for word in expanded_words if word in fragment_lower)
+
+            # Исключаем фрагменты только с заголовками
+            if matches > 0 and len(fragment) > 50:  # Минимальная длина содержательного фрагмента
+                # Исключаем чистые заголовки
+                if not (fragment.startswith('📔') and len(fragment) < 100):
+                    filtered_fragments.append(fragment)
+
+        # Если после фильтрации осталось мало фрагментов, берем все
+        if len(filtered_fragments) < 5:
+            return fragments
+
+        return filtered_fragments
     
     def extract_relevant_memories(
         self,
@@ -168,7 +221,7 @@ class MemoryExtractor:
             intent_data = self.intent_analyzer.analyze_intent(
                 user_message, conversation_context
             )
-            self._log_debug("intent_analysis", intent_data)
+            self.log_debug_step("intent_analysis", intent_data)
         
         # Получаем список релевантных типов памяти
         memory_types = intent_data.get("match_memory", [])
@@ -186,7 +239,7 @@ class MemoryExtractor:
         # Модель для релевантности памяти по умолчанию gpt-3.5-turbo
         model_to_use = model or "gpt-3.5-turbo"
 
-        self._log_debug(
+        self.log_debug_step(
             "memory_search_start",
             {
                 "user_message": user_message,
@@ -255,7 +308,7 @@ class MemoryExtractor:
                 break
         # Если превысили лимит токенов, прекращаем добавление
 
-        self._log_debug(
+        self.log_debug_step(
             "fragments_collected",
             {
                 "count": len(all_fragments),
@@ -263,6 +316,17 @@ class MemoryExtractor:
                 "sources": list({v for v in fragments_sources.values()}),
             },
         )
+
+        # Применяем предварительную фильтрацию
+        if all_fragments:
+            all_fragments = self.prefilter_fragments(all_fragments, user_message)
+            self.log_debug_step(
+                "prefiltered_fragments",
+                {
+                    "count": len(all_fragments),
+                    "sample": all_fragments[:2] if all_fragments else [],
+                },
+            )
         
         # Если у нас нет фрагментов, возвращаем пустой результат
         if not all_fragments:
@@ -282,7 +346,7 @@ class MemoryExtractor:
             memory_token_limit=800,
         )
         relevant_fragments = relevance_data.get("fragments", [])
-        self._log_debug("relevance_result", relevance_data)
+        self.log_debug_step("relevance_result", relevance_data)
         
         # Формируем результат
         result = {
@@ -300,6 +364,6 @@ class MemoryExtractor:
             if text in fragments_sources:
                 result["sources"][text] = fragments_sources[text]
 
-        self._log_debug("memory_search_result", result)
+        self.log_debug_step("memory_search_result", result)
 
         return result
