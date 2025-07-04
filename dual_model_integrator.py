@@ -10,6 +10,7 @@ import json
 import requests
 import time
 from datetime import datetime
+from astra_mcp_memory import AstraMCPMemory
 
 class DualModelIntegrator:
     """Класс для интеграции двух моделей GPT для создания Астры"""
@@ -40,6 +41,11 @@ class DualModelIntegrator:
         self.last_memories_data = None
         self.last_style_data = None
         self.last_gpt4o_prompt = None
+
+        # Добавляем векторную память
+        print("Инициализация векторной памяти...")
+        self.mcp_memory = AstraMCPMemory()
+        print(f"Векторная память: {self.mcp_memory.get_stats()}")
     
     def generate_integrated_response(self, user_message, conversation_context=None, emotional_state=None, temperature=None):
         """
@@ -75,10 +81,8 @@ class DualModelIntegrator:
         self.log_step("2. Style Analysis", style_data)
         
         # Используем только gpt-3.5-turbo для всех операций
-        # Шаг 3: Извлекаем релевантные воспоминания
-        memories_data = self.memory_extractor.extract_relevant_memories(
-            user_message, intent_data, conversation_context, model="gpt-3.5-turbo"
-        )
+        # Шаг 3: Извлекаем релевантные воспоминания с помощью векторного поиска
+        memories_data = self.extract_vector_memories(user_message, intent_data)
         self.last_memories_data = memories_data
         
         # Логирование воспоминаний
@@ -147,11 +151,81 @@ class DualModelIntegrator:
             "original_intent_emotions": intent_data.get("emotional_context", {}),
             "final_emotional_state": emotional_state,
             "memories_found": len(memories_data.get("memories", [])),
-            "memory_relevance_scores": [m.get("relevance", 0) for m in memories_data.get("memories", [])]
+            "memory_relevance_scores": [m.get("relevance", 0) for m in memories_data.get("memories", [])],
+            "search_method": memories_data.get("_search_method", "unknown"),
+            "vector_stats": self.mcp_memory.get_stats() if hasattr(self, 'mcp_memory') else {},
         }
         self.log_step("Debug Info", debug_info)
 
         return result
+
+    def extract_vector_memories(self, user_message, intent_data):
+        """
+        Извлекает релевантные воспоминания с помощью векторного поиска
+
+        Args:
+            user_message (str): Сообщение пользователя
+            intent_data (dict): Данные о намерении
+
+        Returns:
+            dict: Результат поиска в памяти
+        """
+        try:
+            # Определяем количество результатов в зависимости от намерения
+            top_k = 5 if intent_data.get("intent") == "memory_recall" else 3
+
+            # Выполняем семантический поиск
+            search_results = self.mcp_memory.semantic_search(
+                query=user_message,
+                top_k=top_k,
+                min_score=0.5,
+            )
+
+            # Логируем результаты
+            self.log_step(
+                "Vector Memory Search",
+                {
+                    "query": user_message,
+                    "results_count": len(search_results),
+                    "top_scores": [r.get("score", 0) for r in search_results[:3]],
+                },
+            )
+
+            memories = []
+            sources = {}
+
+            for result in search_results:
+                memory_text = result.get("text", "")
+                score = result.get("score", 0)
+                source = result.get("source", "vector_store")
+
+                memories.append(
+                    {
+                        "text": memory_text,
+                        "relevance": float(score),
+                        "reason": f"\u0421\u0435\u043c\u0430\u043d\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u0441\u0445\u043e\u0434\u0441\u0442\u0432\u043e: {score:.3f}",
+                        "emotional_weight": min(score, 1.0),
+                    }
+                )
+
+                sources[memory_text] = source
+
+            return {
+                "intent": intent_data.get("intent", "unknown"),
+                "memories": memories,
+                "sources": sources,
+                "_search_method": "vector_semantic",
+            }
+
+        except Exception as e:
+            self.log_step("Vector Memory Error", str(e))
+
+            return self.memory_extractor.extract_relevant_memories(
+                user_message,
+                intent_data,
+                None,
+                model="gpt-3.5-turbo",
+            )
     
     def create_integrated_prompt(self, user_message, conversation_context, emotional_state, intent_data, memories_data, style_data):
         """
@@ -182,10 +256,15 @@ class DualModelIntegrator:
         
         # Добавляем релевантные воспоминания, если они есть
         if memories_data.get("memories"):
-            memories_context = "\n\n🧠 РЕЛЕВАНТНЫЕ ВОСПОМИНАНИЯ:\n\n"
+            search_method = memories_data.get("_search_method", "unknown")
+            memories_context = f"\n\n🧠 РЕЛЕВАНТНЫЕ ВОСПОМИНАНИЯ (поиск: {search_method}):\n\n"
+
             for i, memory in enumerate(memories_data["memories"], 1):
-                source = memories_data["sources"].get(memory["text"], "неизвестно")
-                memories_context += f"Воспоминание {i} (из {source}):\n{memory['text']}\n\n"
+                source = memories_data["sources"].get(memory["text"], "vector_store")
+                relevance = memory.get("relevance", 0)
+                memories_context += f"Воспоминание {i} (релевантность: {relevance:.3f}, источник: {source}):\n"
+                memories_context += f"{memory['text']}\n\n"
+
             system_prompt += memories_context
 
         # Добавляем эмоциональный контекст на основе намерений
